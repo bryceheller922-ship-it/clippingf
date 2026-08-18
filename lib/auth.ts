@@ -1,4 +1,4 @@
-import type { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { refreshTokens } from './tiktok';
 import { writeAccount, type StoredAccount } from './store';
 
@@ -12,10 +12,10 @@ export function redirectUriFor(req: NextRequest): string {
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 /**
- * Returns an account with a valid access token, refreshing (and re-persisting
- * the cookie on `res`) when the current one is expired or about to expire.
+ * Returns an account with a valid access token, refreshing and re-persisting
+ * it to Redis when the current one is expired or about to expire.
  */
-export async function withFreshToken(acct: StoredAccount, res: NextResponse): Promise<StoredAccount> {
+export async function withFreshToken(acct: StoredAccount): Promise<StoredAccount> {
   if (Date.now() < acct.expires_at - REFRESH_MARGIN_MS) return acct;
   const tokens = await refreshTokens(acct.refresh_token);
   const updated: StoredAccount = {
@@ -26,6 +26,6 @@ export async function withFreshToken(acct: StoredAccount, res: NextResponse): Pr
     refresh_expires_at: Date.now() + tokens.refresh_expires_in * 1000,
     scope: tokens.scope
   };
-  writeAccount(res, updated);
+  await writeAccount(updated);
   return updated;
 }

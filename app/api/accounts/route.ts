@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readAccounts, deleteAccount } from '@/lib/store';
 import { withFreshToken } from '@/lib/auth';
+import { getUser } from '@/lib/session';
+import { logActivity } from '@/lib/activity';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
-  const res = NextResponse.json({ accounts: [] as unknown[] });
+export async function GET() {
   const accounts = [];
-  for (const acct of readAccounts(req)) {
+  for (const acct of await readAccounts()) {
     let status: 'ok' | 'reauth_needed' = 'ok';
     let fresh = acct;
     if (Date.now() > acct.refresh_expires_at) {
       status = 'reauth_needed';
     } else {
       try {
-        fresh = await withFreshToken(acct, res);
+        fresh = await withFreshToken(acct);
       } catch {
         status = 'reauth_needed';
       }
@@ -23,20 +24,17 @@ export async function GET(req: NextRequest) {
       open_id: fresh.open_id,
       display_name: fresh.display_name,
       avatar_url: fresh.avatar_url,
+      added_by: fresh.added_by,
       status
     });
   }
-  // NextResponse.json body is fixed at construction, so rebuild with data while
-  // keeping any Set-Cookie headers added by token refreshes.
-  const out = NextResponse.json({ accounts });
-  res.headers.getSetCookie().forEach((c) => out.headers.append('Set-Cookie', c));
-  return out;
+  return NextResponse.json({ accounts });
 }
 
 export async function DELETE(req: NextRequest) {
   const { openId } = await req.json().catch(() => ({}));
   if (!openId) return NextResponse.json({ error: 'openId required' }, { status: 400 });
-  const res = NextResponse.json({ ok: true });
-  deleteAccount(res, openId);
-  return res;
+  await deleteAccount(openId);
+  await logActivity(await getUser(req), 'disconnect_account', `Disconnected a TikTok account`);
+  return NextResponse.json({ ok: true });
 }

@@ -1,78 +1,81 @@
-# Multi-TikTok Uploader
+# ClippingF — the clipping workspace
 
-Upload a video once and post it to **multiple TikTok accounts at the same time**. Built with Next.js and deployable to Vercel with zero extra infrastructure — connected accounts are stored as encrypted, httpOnly cookies in your own browser, so there's no database to run.
+A self-hosted clipping platform for a small team, deployable on Vercel. Upload a clip once, post it to **every connected TikTok account at the same time**, keep a shared **clip library**, track **Whop earnings** per clip, and run **AI agent containers** (Groq, OpenAI, Anthropic, OpenRouter, or any OpenAI-compatible API) that help manage the operation.
 
-It uses TikTok's official **Login Kit** (OAuth) and **Content Posting API**:
+## What's inside
 
-- Connect any number of TikTok accounts via OAuth
-- Pick a video (MP4 / MOV / WebM, up to 4GB) — it uploads browser → Vercel Blob, then the server streams it to TikTok in chunks for each account
-- **Post directly** (caption, privacy, comment/duet/stitch toggles) or **send as draft** to each account's TikTok inbox
-- Live per-account status while TikTok processes each post
+- **Multi-account TikTok posting** — official Login Kit + Content Posting API. Direct post (caption, privacy, comment/duet/stitch toggles) or send-as-draft to each account's TikTok inbox. Live per-account publish status.
+- **Team workspace** — you and your business partner each get a login (`APP_USERS` env var). TikTok accounts, clips, agents and settings are shared; an activity log shows who (or which agent) did what.
+- **Clip library** — every upload is stored (Vercel Blob + Upstash Redis metadata) with title, notes, posting history, and one-click reposting to any set of accounts.
+- **Whop integration** — connect your Whop API key (verified against the Whop v5 API, shows your company + recent payments where the key allows). Per-clip Content Rewards tracking: campaign URL, submitted post URL, status, views, earnings.
+  > **Reality check:** Whop's public API has **no endpoint for submitting clips to Content Rewards campaigns** — submissions are done on the Whop campaign page. The Library gives you a fast submit-and-track loop instead, and agents can read/update the tracking.
+- **Agent containers** — plug in any AI API key and spin up agents with their own role, model, and permissions. Groq is a first-class preset (a free Groq key powers your whole agent team). Agents get real tools: list/inspect/update clips, write captions, check Whop status, read the activity log, and — only if you enable it per agent — **post clips to TikTok themselves**.
 
-## 1. Create a TikTok developer app
+## Setup
 
-1. Go to [developers.tiktok.com](https://developers.tiktok.com) → **Manage apps** → create an app.
-2. Add the **Login Kit** and **Content Posting API** products to the app.
-3. Under Login Kit, set the **Redirect URI** to:
-   ```
-   https://<your-vercel-domain>/api/auth/callback
-   ```
-   (add `http://localhost:3000/api/auth/callback` too if you want local dev — TikTok may require HTTPS, in which case use a tunnel like `ngrok`).
-4. Request the scopes `user.info.basic`, `video.upload`, and `video.publish`.
-5. Copy the app's **Client key** and **Client secret**.
+### 1. TikTok developer app
 
-> **Sandbox / audit note:** until TikTok approves (audits) your app, it runs in sandbox rules: only **test accounts you add in the developer portal** can authorize it, and direct posts are forced to **Private (only me)** visibility. The app handles this automatically (it falls back to `SELF_ONLY` and tells you). Submit the app for review in the developer portal to unlock public posting for any account.
+1. [developers.tiktok.com](https://developers.tiktok.com) → create an app, add **Login Kit** + **Content Posting API**.
+2. Redirect URI: `https://<your-vercel-domain>/api/auth/callback`.
+3. Scopes: `user.info.basic`, `video.upload`, `video.publish`.
+4. Copy the Client key and secret.
 
-## 2. Deploy to Vercel
+> **Sandbox note:** until TikTok audits your app, only test accounts added in the developer portal can connect and direct posts are forced to **Private (only me)**. The app handles this automatically. Submit for review to unlock public posting.
 
-1. Push this repo to GitHub and import it at [vercel.com/new](https://vercel.com/new) (defaults are fine — it's a standard Next.js app).
-2. In the Vercel project, go to **Storage → Create → Blob** and attach a Blob store. This auto-adds the `BLOB_READ_WRITE_TOKEN` env var (needed because videos are too big for serverless request bodies — the browser uploads them to Blob, the server relays to TikTok).
-3. Add these environment variables (Settings → Environment Variables):
+### 2. Deploy to Vercel
+
+1. Import the repo at [vercel.com/new](https://vercel.com/new).
+2. **Storage → Blob** — attach a Blob store (video files; adds `BLOB_READ_WRITE_TOKEN`).
+3. **Storage → Upstash for Redis** — attach a Redis store (shared workspace data; adds `KV_REST_API_URL`/`KV_REST_API_TOKEN`).
+4. Environment variables:
 
    | Variable | Value |
    |---|---|
-   | `TIKTOK_CLIENT_KEY` | from the TikTok developer portal |
-   | `TIKTOK_CLIENT_SECRET` | from the TikTok developer portal |
-   | `SESSION_SECRET` | any long random string — `openssl rand -base64 48` |
-   | `TIKTOK_REDIRECT_URI` | *(optional)* only if your redirect URI differs from `https://<domain>/api/auth/callback` |
+   | `APP_USERS` | `bryce:yourpassword,partner:theirpassword` |
+   | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | from TikTok developer portal |
+   | `SESSION_SECRET` | long random string — `openssl rand -base64 48` |
+   | `GROQ_API_KEY` | *(optional)* from [console.groq.com](https://console.groq.com/keys); can also be set in Settings |
+   | `WHOP_API_KEY` | *(optional)* from [whop.com/dashboard/developer](https://whop.com/dashboard/developer); can also be set in Settings |
+   | `TIKTOK_REDIRECT_URI` | *(optional)* only if it differs from `https://<domain>/api/auth/callback` |
 
-4. Redeploy, open the site, and connect your accounts.
+5. Deploy, sign in, connect TikTok accounts, add agents.
 
-If the build complains about `maxDuration = 300` (some plans cap lower), lower the value at the top of `app/api/publish/route.ts` to `60`.
+If the build rejects `maxDuration = 300` (plan limit), lower it in `app/api/publish/route.ts` and `app/api/agents/[id]/chat/route.ts`.
 
-## 3. Use it
+## Using it
 
-1. **Connect** each TikTok account. TikTok reuses your logged-in tiktok.com session, so to add a second account use *switch account* on TikTok's login screen (or log out of tiktok.com between connects).
-2. **Pick a video**, write a caption, choose privacy, or switch to *Send as draft* to finish each post inside the TikTok app.
-3. **Post** — every selected account gets the video in parallel, with live status per account.
+- **Post** — pick accounts, drop a video, caption it, post. The clip lands in the Library automatically. To connect a second TikTok account, use *switch account* on TikTok's login screen.
+- **Library** — repost any clip to any accounts, keep notes, and run the Whop loop: post → open campaign → submit your post URL on Whop → track status/views/earnings on the clip.
+- **Agents** — create a container per job: a Groq caption writer, an Anthropic strategist, a manager with `post_clip` rights that can publish for you after you confirm in chat. Each agent's key is stored encrypted; each tool is opt-in per agent (`post_clip` is off by default).
+- **Settings** — Whop key + connection test, workspace Groq key, default hashtags.
+
+## Architecture
+
+```
+Auth      APP_USERS env → HMAC-signed session cookie (middleware-gated)
+Storage   Vercel Blob (videos) + Upstash Redis (accounts, clips, agents,
+          settings, activity) — secrets AES-256-GCM encrypted at rest
+Posting   browser → Blob (client upload, dodges the 4.5MB fn limit)
+          → /api/publish per account → TikTok init + chunked upload
+          → status polling via /v2/post/publish/status/fetch/
+Agents    /api/agents/[id]/chat → provider API (OpenAI-compatible or
+          Anthropic) ⇄ tool loop over platform tools (max 8 rounds)
+Whop      v5 REST (Bearer key): company verify + payments; submissions
+          tracked per clip (no public submissions API exists)
+```
 
 ## Local development
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in the values
+cp .env.example .env.local   # fill in values
+npx vercel link && npx vercel env pull .env.local   # pulls Blob/Redis tokens
 npm run dev
 ```
 
-For Blob uploads locally, link the project and pull the token: `npx vercel link && npx vercel env pull .env.local`.
-
-## How it works
-
-```
-browser ──(client upload)──▶ Vercel Blob
-browser ──POST /api/publish (per account)──▶ serverless fn
-   fn: refresh OAuth token if stale (rotating cookie store, AES-256-GCM encrypted)
-   fn: POST /v2/post/publish/{video|inbox/video}/init/  → publish_id + upload_url
-   fn: stream blob → TikTok upload_url (Range-based 10MB chunks, single chunk ≤ 64MB)
-browser ──POST /api/publish/status (poll)──▶ /v2/post/publish/status/fetch/
-browser ──POST /api/blob-delete──▶ blob cleanup
-```
-
-Tokens never reach the browser in readable form; each account lives in its own `ttacct_*` cookie encrypted with `SESSION_SECRET`. Access tokens auto-refresh (TikTok access tokens last 24h, refresh tokens ~1 year — after that the UI asks you to reconnect the account).
-
 ## Limits & notes
 
-- TikTok caps: 4GB / 10 min video (per-account limits come from the creator info check), 2200-char captions.
-- Very large files also have to fit through one serverless invocation per account (300s max duration) — typical clips are fine; multi-GB files may time out.
-- TikTok's API requires showing the creator's real posting options — that's why direct posts validate privacy against each account's allowed options at post time.
-- This posts the *same* video to all selected accounts. TikTok may flag duplicated content across accounts; use responsibly and per [TikTok's Community Guidelines](https://www.tiktok.com/community-guidelines) and developer terms.
+- TikTok: 4GB / 10 min max video, 2200-char captions, per-account limits come from the creator-info check at post time.
+- One serverless invocation per account per post (300s cap) — typical clips are fine, multi-GB files may time out.
+- Agents with `post_clip` can publish real content — give that permission only to agents/prompts you trust, and prefer models with solid tool-calling (Groq `llama-3.3-70b-versatile` works well).
+- Posting identical videos across many accounts can trip TikTok's duplicated-content rules; vary captions/timing and follow [TikTok's Community Guidelines](https://www.tiktok.com/community-guidelines) and Whop campaign rules.

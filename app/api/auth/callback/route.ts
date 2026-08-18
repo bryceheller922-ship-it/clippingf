@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCode, getUserInfo } from '@/lib/tiktok';
 import { redirectUriFor } from '@/lib/auth';
 import { writeAccount, type StoredAccount } from '@/lib/store';
+import { getUser } from '@/lib/session';
+import { logActivity } from '@/lib/activity';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,22 +28,25 @@ export async function GET(req: NextRequest) {
   if (!state || !expectedState || state !== expectedState) return fail('OAuth state mismatch — try connecting again');
 
   try {
+    const user = await getUser(req);
     const tokens = await exchangeCode(code, redirectUriFor(req));
-    const user = await getUserInfo(tokens.access_token);
+    const info = await getUserInfo(tokens.access_token);
     const acct: StoredAccount = {
       open_id: tokens.open_id,
-      display_name: user.display_name,
-      avatar_url: user.avatar_url,
+      display_name: info.display_name,
+      avatar_url: info.avatar_url,
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       expires_at: Date.now() + tokens.expires_in * 1000,
       refresh_expires_at: Date.now() + tokens.refresh_expires_in * 1000,
-      scope: tokens.scope
+      scope: tokens.scope,
+      added_by: user
     };
-    home.searchParams.set('connected', user.display_name);
+    await writeAccount(acct);
+    await logActivity(user, 'connect_account', `Connected TikTok account @${info.display_name}`);
+    home.searchParams.set('connected', info.display_name);
     const res = NextResponse.redirect(home);
     res.cookies.set('tt_oauth_state', '', { path: '/', maxAge: 0 });
-    writeAccount(res, acct);
     return res;
   } catch (e) {
     return fail((e as Error).message);

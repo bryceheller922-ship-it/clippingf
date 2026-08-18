@@ -1,13 +1,11 @@
-import type { NextRequest, NextResponse } from 'next/server';
-import { decrypt, encrypt, shortHash } from './crypto';
+import { redis } from './redis';
+import { decrypt, encrypt } from './crypto';
 
-// Connected TikTok accounts are stored client-side: one encrypted, httpOnly
-// cookie per account. No database needed, which keeps the app deployable on
-// Vercel with zero extra infrastructure. Tokens never reach the browser in
-// readable form.
+// Connected TikTok accounts live in Redis so the whole workspace (you and
+// your partner) shares them. Tokens are AES-256-GCM encrypted at rest with
+// SESSION_SECRET.
 
-export const ACCOUNT_COOKIE_PREFIX = 'ttacct_';
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // matches TikTok refresh-token lifetime
+const KEY = 'tt:accounts';
 
 export interface StoredAccount {
   open_id: string;
@@ -20,42 +18,42 @@ export interface StoredAccount {
   /** epoch ms when refresh_token expires */
   refresh_expires_at: number;
   scope: string;
+  added_by?: string;
 }
 
-export function cookieNameFor(openId: string): string {
-  return ACCOUNT_COOKIE_PREFIX + shortHash(openId);
-}
-
-export function readAccounts(req: NextRequest): StoredAccount[] {
+export async function readAccounts(): Promise<StoredAccount[]> {
+  const all = await redis().hgetall<Record<string, string>>(KEY);
+  if (!all) return [];
   const accounts: StoredAccount[] = [];
-  for (const cookie of req.cookies.getAll()) {
-    if (!cookie.name.startsWith(ACCOUNT_COOKIE_PREFIX)) continue;
-    const json = decrypt(cookie.value);
+  for (const enc of Object.values(all)) {
+    const json = decrypt(String(enc));
     if (!json) continue;
     try {
       const acct = JSON.parse(json) as StoredAccount;
       if (acct.open_id && acct.refresh_token) accounts.push(acct);
     } catch {
-      // corrupt cookie — ignore
+      // corrupt entry — skip
     }
   }
-  return accounts;
+  return accounts.sort((a, b) => a.display_name.localeCompare(b.display_name));
 }
 
-export function findAccount(req: NextRequest, openId: string): StoredAccount | null {
-  return readAccounts(req).find((a) => a.open_id === openId) ?? null;
+export async function findAccount(openId: string): Promise<StoredAccount | null> {
+  const enc = await redis().hget<string>(KEY, openId);
+  if (!enc) return null;
+  const json = decrypt(String(enc));
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as StoredAccount;
+  } catch {
+    return null;
+  }
 }
 
-export function writeAccount(res: NextResponse, acct: StoredAccount): void {
-  res.cookies.set(cookieNameFor(acct.open_id), encrypt(JSON.stringify(acct)), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: COOKIE_MAX_AGE
-  });
+export async function writeAccount(acct: StoredAccount): Promise<void> {
+  await redis().hset(KEY, { [acct.open_id]: encrypt(JSON.stringify(acct)) });
 }
 
-export function deleteAccount(res: NextResponse, openId: string): void {
-  res.cookies.set(cookieNameFor(openId), '', { path: '/', maxAge: 0 });
+export async function deleteAccount(openId: string): Promise<void> {
+  await redis().hdel(KEY, openId);
 }

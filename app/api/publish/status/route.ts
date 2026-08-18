@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findAccount } from '@/lib/store';
-import { withFreshToken } from '@/lib/auth';
-import { fetchPublishStatus } from '@/lib/tiktok';
+import { checkPublishStatus } from '@/lib/publish';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,16 +8,8 @@ export async function POST(req: NextRequest) {
   if (!openId || !publishId) {
     return NextResponse.json({ error: 'openId and publishId are required' }, { status: 400 });
   }
-  const stored = findAccount(req, openId);
-  if (!stored) return NextResponse.json({ error: 'Account not connected' }, { status: 404 });
-
-  const res = NextResponse.json({});
   try {
-    const acct = await withFreshToken(stored, res);
-    const status = await fetchPublishStatus(acct.access_token, publishId);
-    const out = NextResponse.json(status);
-    res.headers.getSetCookie().forEach((c) => out.headers.append('Set-Cookie', c));
-    return out;
+    return NextResponse.json(await checkPublishStatus(openId, publishId));
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   }

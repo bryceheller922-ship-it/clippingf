@@ -6,6 +6,7 @@ interface Account {
   open_id: string;
   display_name: string;
   avatar_url: string;
+  added_by?: string;
   status: 'ok' | 'reauth_needed';
 }
 
@@ -15,6 +16,13 @@ interface AccountResult {
   stage: Stage;
   message: string;
   publishId?: string;
+}
+
+interface ActivityEntry {
+  ts: number;
+  actor: string;
+  action: string;
+  detail?: string;
 }
 
 const PRIVACY_OPTIONS = [
@@ -42,6 +50,7 @@ export default function Home() {
   const [results, setResults] = useState<Record<string, AccountResult>>({});
   const [banner, setBanner] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const loadAccounts = useCallback(async () => {
@@ -57,8 +66,16 @@ export default function Home() {
     }
   }, []);
 
+  const loadActivity = useCallback(() => {
+    fetch('/api/activity')
+      .then((r) => r.json())
+      .then((d) => setActivity(d.activity ?? []))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     loadAccounts();
+    loadActivity();
     const params = new URLSearchParams(window.location.search);
     if (params.get('connected')) {
       setBanner({ kind: 'ok', text: `Connected @${params.get('connected')}` });
@@ -68,7 +85,7 @@ export default function Home() {
     if (params.get('connected') || params.get('error')) {
       window.history.replaceState({}, '', '/');
     }
-  }, [loadAccounts]);
+  }, [loadAccounts, loadActivity]);
 
   function toggleAccount(a: Account) {
     if (a.status !== 'ok' || posting) return;
@@ -86,10 +103,6 @@ export default function Home() {
       body: JSON.stringify({ openId })
     });
     loadAccounts();
-  }
-
-  function onFilePicked(f: File | null | undefined) {
-    if (f) setFile(f);
   }
 
   const setResult = (openId: string, r: AccountResult) =>
@@ -136,7 +149,6 @@ export default function Home() {
     setBanner(null);
 
     const targets = accounts.filter((a) => selected.has(a.open_id));
-    let blobUrl: string | null = null;
     try {
       setGlobalStatus(`Uploading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
       const { upload } = await import('@vercel/blob/client');
@@ -144,7 +156,16 @@ export default function Home() {
         access: 'public',
         handleUploadUrl: '/api/blob-upload'
       });
-      blobUrl = blob.url;
+
+      // Every upload becomes a library clip so it can be reposted and tracked on Whop.
+      const clipRes = await fetch('/api/clips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title || file.name, filename: file.name, blobUrl: blob.url, size: file.size })
+      });
+      const clipData = await clipRes.json();
+      if (!clipRes.ok) throw new Error(clipData.error ?? 'Failed to save clip to library');
+      const clipId = clipData.clip.id as string;
 
       setGlobalStatus(`Sending to ${targets.length} account${targets.length > 1 ? 's' : ''}…`);
       for (const a of targets) {
@@ -159,11 +180,12 @@ export default function Home() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 openId: a.open_id,
-                videoUrl: blobUrl,
+                videoUrl: blob.url,
                 videoSize: file.size,
                 title,
                 privacyLevel: privacy,
                 mode,
+                clipId,
                 disableComment,
                 disableDuet,
                 disableStitch
@@ -179,17 +201,11 @@ export default function Home() {
         })
       );
       setGlobalStatus('');
+      loadActivity();
     } catch (e) {
       setBanner({ kind: 'err', text: `Upload failed: ${(e as Error).message}` });
       setGlobalStatus('');
     } finally {
-      if (blobUrl) {
-        fetch('/api/blob-delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: blobUrl })
-        }).catch(() => {});
-      }
       setPosting(false);
     }
   }
@@ -200,9 +216,9 @@ export default function Home() {
     <main className="container">
       <div className="hero">
         <h1>
-          Multi-TikTok <span className="accent">Uploader</span>
+          Post <span className="accent">everywhere</span>
         </h1>
-        <p>Upload once, post to every connected TikTok account.</p>
+        <p>Upload once — post to every connected TikTok. Clips are saved to the shared Library for reposting and Whop tracking.</p>
       </div>
 
       {banner && <div className={`banner ${banner.kind}`}>{banner.text}</div>}
@@ -231,7 +247,13 @@ export default function Home() {
                 )}
                 <div className="grow">
                   <div className="name">{a.display_name}</div>
-                  {a.status === 'reauth_needed' && <div className="sub">Session expired — reconnect this account</div>}
+                  <div className="sub">
+                    {a.status === 'reauth_needed'
+                      ? 'Session expired — reconnect this account'
+                      : a.added_by
+                        ? `added by ${a.added_by}`
+                        : ''}
+                  </div>
                 </div>
                 <button
                   className="btn-ghost"
@@ -253,7 +275,7 @@ export default function Home() {
           </button>
         </div>
         <p className="hint" style={{ marginTop: 10 }}>
-          To add another account, TikTok may auto-select the account you last logged in with — use
+          Accounts are shared with everyone in this workspace. To add another TikTok account, use
           “switch account” on TikTok’s login screen (or log out of tiktok.com first).
         </p>
       </section>
@@ -273,7 +295,7 @@ export default function Home() {
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
-            onFilePicked(e.dataTransfer.files?.[0]);
+            if (e.dataTransfer.files?.[0]) setFile(e.dataTransfer.files[0]);
           }}
         >
           {file ? (
@@ -288,7 +310,7 @@ export default function Home() {
             type="file"
             accept="video/mp4,video/quicktime,video/webm"
             hidden
-            onChange={(e) => onFilePicked(e.target.files?.[0])}
+            onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])}
           />
         </div>
 
@@ -309,7 +331,7 @@ export default function Home() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 maxLength={2200}
-                placeholder="Write a caption… #hashtags work too"
+                placeholder="Write a caption… #hashtags work too (or ask an Agent to write one)"
                 disabled={posting}
               />
             </label>
@@ -372,12 +394,26 @@ export default function Home() {
         )}
 
         <p className="hint" style={{ marginTop: 14 }}>
-          Note: until your TikTok developer app passes TikTok&apos;s audit, direct posts are forced to{' '}
-          <strong>Private (only me)</strong> and only test accounts added in the developer portal can
-          connect. “Send as draft” lands the video in each account&apos;s TikTok inbox to publish from
-          the app.
+          Until your TikTok developer app passes TikTok&apos;s audit, direct posts are forced to{' '}
+          <strong>Private (only me)</strong> and only test accounts can connect. After posting, grab
+          each post&apos;s URL and track it against a Whop campaign in the <a href="/library">Library</a>.
         </p>
       </section>
+
+      {activity.length > 0 && (
+        <section className="card">
+          <h2>Recent activity</h2>
+          <div className="activity">
+            {activity.slice(0, 12).map((e, i) => (
+              <div className="activity-row" key={i}>
+                <span className="actor">{e.actor}</span>
+                <span className="msg">{e.detail ?? e.action}</span>
+                <span className="time">{new Date(e.ts).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
   );
 }
