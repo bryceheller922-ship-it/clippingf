@@ -31,8 +31,13 @@ function workspaceContext(agent: AgentConfig): string {
     'You have tools to inspect and manage the workspace. Use them instead of guessing — e.g. list_clips before talking about clips. Whop clip submissions have no public API, so guide the humans to submit posted-clip URLs on the Whop campaign page and track everything with update_clip.',
     agent.tools.includes('post_clip')
       ? 'You MAY post clips to TikTok with post_clip. Confirm the target accounts and caption in conversation before posting unless the user is explicit.'
-      : 'You cannot post to TikTok yourself; propose captions and plans for the humans instead.'
-  ].join('\n');
+      : 'You cannot post to TikTok yourself; propose captions and plans for the humans instead.',
+    agent.tools.includes('browser_task')
+      ? 'You can drive a real cloud browser with browser_task (Browser Use). Write detailed instructions with exact URLs and success criteria, restrict allowed_domains, and use a profile from list_browser_profiles when the task needs a logged-in session (e.g. submitting a posted TikTok URL to a Whop Content Rewards campaign). Browser tasks take minutes: after starting one, check browser_task_status once, then report the task_id and live_url so the humans can watch — do not poll repeatedly in one turn. Ask them to check back for the result.'
+      : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export async function runAgent(agent: AgentConfig, messages: ChatMessage[]): Promise<AgentRunResult> {

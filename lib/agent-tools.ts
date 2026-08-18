@@ -8,6 +8,7 @@ import { getActivity, logActivity } from './activity';
 import { getSettings } from './settings';
 import { getCompany } from './whop';
 import { publishToAccount, checkPublishStatus } from './publish';
+import { createBrowserTask, getBrowserTask, listProfiles } from './browseruse';
 
 export interface ToolDef {
   name: string;
@@ -109,6 +110,38 @@ export const ALL_TOOLS: ToolDef[] = [
     }
   },
   {
+    name: 'browser_task',
+    description:
+      'Start a task in a real remote browser (Browser Use Cloud). The browser agent follows your plain-English instructions — e.g. navigating to a Whop Content Rewards campaign and submitting a posted TikTok URL. Tasks run async: this returns a task_id and live view URL immediately; poll with browser_task_status. Pass profile_id (from list_browser_profiles) to run in a browser profile the humans have logged into (keeps site sessions). Restrict allowed_domains to the sites the task needs.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'Detailed plain-English instructions, including exact URLs and what to click/type. State clearly what success looks like.' },
+        profile_id: { type: 'string', description: 'Browser profile id with saved logins' },
+        allowed_domains: { type: 'array', items: { type: 'string' }, description: 'e.g. ["whop.com"]' },
+        start_url: { type: 'string' },
+        max_steps: { type: 'number', description: 'Default 50, max 150' }
+      },
+      required: ['task'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'browser_task_status',
+    description: 'Check a browser task: status (started/finished/stopped), success flag, output text, and recent steps.',
+    parameters: {
+      type: 'object',
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'list_browser_profiles',
+    description: 'List Browser Use profiles (cloud Chrome profiles with saved logins) available for browser_task.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
     name: 'log_note',
     description: 'Write a note into the workspace activity log so the humans see it.',
     parameters: {
@@ -120,7 +153,10 @@ export const ALL_TOOLS: ToolDef[] = [
   }
 ];
 
-export const DEFAULT_AGENT_TOOLS = ALL_TOOLS.map((t) => t.name).filter((n) => n !== 'post_clip');
+/** Tools that let an agent act on the outside world — off by default, opt-in per agent. */
+export const DANGEROUS_TOOLS = new Set(['post_clip', 'browser_task']);
+
+export const DEFAULT_AGENT_TOOLS = ALL_TOOLS.map((t) => t.name).filter((n) => !DANGEROUS_TOOLS.has(n));
 
 type Args = Record<string, unknown>;
 
@@ -210,6 +246,41 @@ export async function executeTool(name: string, args: Args, actor: string, allow
         return { connected: true, company };
       } catch (e) {
         return { connected: false, error: (e as Error).message };
+      }
+    }
+    case 'browser_task': {
+      try {
+        const ref = await createBrowserTask({
+          task: String(args.task ?? ''),
+          profileId: args.profile_id ? String(args.profile_id) : undefined,
+          allowedDomains: Array.isArray(args.allowed_domains) ? (args.allowed_domains as string[]) : undefined,
+          startUrl: args.start_url ? String(args.start_url) : undefined,
+          maxSteps: args.max_steps ? Number(args.max_steps) : undefined
+        });
+        await logActivity(actor, 'browser_task', `Started browser task ${ref.id}: ${String(args.task).slice(0, 140)}`);
+        const status = await getBrowserTask(ref.id).catch(() => null);
+        return {
+          task_id: ref.id,
+          session_id: ref.sessionId,
+          live_url: status?.live_url,
+          note: 'Task started. It runs asynchronously in the cloud browser — poll browser_task_status for the result. The humans can watch it at the live_url.'
+        };
+      } catch (e) {
+        return { error: (e as Error).message };
+      }
+    }
+    case 'browser_task_status': {
+      try {
+        return await getBrowserTask(String(args.task_id ?? ''));
+      } catch (e) {
+        return { error: (e as Error).message };
+      }
+    }
+    case 'list_browser_profiles': {
+      try {
+        return await listProfiles();
+      } catch (e) {
+        return { error: (e as Error).message };
       }
     }
     case 'get_activity':

@@ -3,11 +3,12 @@ import { decrypt, encrypt } from './crypto';
 
 // Workspace settings. Secret values (API keys) are encrypted at rest.
 const KEY = 'settings';
-const SECRET_FIELDS = new Set(['whop_api_key', 'groq_api_key']);
+const SECRET_FIELDS = new Set(['whop_api_key', 'groq_api_key', 'browseruse_api_key']);
 
 export interface Settings {
   whop_api_key?: string;
   groq_api_key?: string;
+  browseruse_api_key?: string;
   default_hashtags?: string;
 }
 
@@ -21,11 +22,14 @@ export async function getSettings(): Promise<Settings> {
   // Env vars act as defaults so you can configure keys without the UI.
   if (!settings.groq_api_key && process.env.GROQ_API_KEY) settings.groq_api_key = process.env.GROQ_API_KEY;
   if (!settings.whop_api_key && process.env.WHOP_API_KEY) settings.whop_api_key = process.env.WHOP_API_KEY;
+  if (!settings.browseruse_api_key && process.env.BROWSERUSE_API_KEY) {
+    settings.browseruse_api_key = process.env.BROWSERUSE_API_KEY;
+  }
   return settings;
 }
 
 export async function patchSettings(patch: Record<string, string>): Promise<void> {
-  const allowed = ['whop_api_key', 'groq_api_key', 'default_hashtags'];
+  const allowed = ['whop_api_key', 'groq_api_key', 'browseruse_api_key', 'default_hashtags'];
   const toSet: Record<string, string> = {};
   const toDel: string[] = [];
   for (const k of allowed) {

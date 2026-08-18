@@ -12,8 +12,10 @@ interface WhopStatus {
 export default function Settings() {
   const [whopMasked, setWhopMasked] = useState('');
   const [groqMasked, setGroqMasked] = useState('');
+  const [buMasked, setBuMasked] = useState('');
   const [whopKey, setWhopKey] = useState('');
   const [groqKey, setGroqKey] = useState('');
+  const [buKey, setBuKey] = useState('');
   const [hashtags, setHashtags] = useState('');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -24,6 +26,7 @@ export default function Settings() {
     const s = await fetch('/api/settings').then((r) => r.json());
     setWhopMasked(s.whop_api_key_masked ?? '');
     setGroqMasked(s.groq_api_key_masked ?? '');
+    setBuMasked(s.browseruse_api_key_masked ?? '');
     setHashtags(s.default_hashtags ?? '');
   }, []);
 
@@ -37,6 +40,7 @@ export default function Settings() {
     const patch: Record<string, string> = { default_hashtags: hashtags };
     if (whopKey) patch.whop_api_key = whopKey;
     if (groqKey) patch.groq_api_key = groqKey;
+    if (buKey) patch.browseruse_api_key = buKey;
     const res = await fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -45,6 +49,7 @@ export default function Settings() {
     setMsg(res.ok ? 'Saved.' : 'Save failed.');
     setWhopKey('');
     setGroqKey('');
+    setBuKey('');
     setSaving(false);
     load();
   }
@@ -128,6 +133,33 @@ export default function Settings() {
             value={groqKey}
             onChange={(e) => setGroqKey(e.target.value)}
             placeholder={groqMasked ? 'Enter a new key to replace' : 'gsk_…'}
+          />
+        </label>
+      </section>
+
+      <section className="card">
+        <h2>Browser agent (Browser Use)</h2>
+        <p className="hint" style={{ marginBottom: 14 }}>
+          Give agents a real cloud browser: add a{' '}
+          <a href="https://cloud.browser-use.com" target="_blank" rel="noreferrer">
+            Browser Use Cloud
+          </a>{' '}
+          API key, then enable the <strong>browser_task</strong> permission on an agent. For tasks
+          that need a login (like submitting clips to a Whop campaign), create a <em>profile</em> in
+          the Browser Use dashboard, sign in to the site inside that profile once, and tell your
+          agent to use it — the session persists across tasks. Note: automating TikTok itself via
+          browser is against TikTok&apos;s terms and their bot detection often blocks it — use the
+          built-in API posting for TikTok and the browser agent for Whop submissions and other web
+          chores.
+        </p>
+        <label className="field">
+          <span className="label">Browser Use API key {buMasked && `(saved: ${buMasked})`}</span>
+          <input
+            type="password"
+            className="pw"
+            value={buKey}
+            onChange={(e) => setBuKey(e.target.value)}
+            placeholder={buMasked ? 'Enter a new key to replace' : 'bu_…'}
           />
         </label>
       </section>

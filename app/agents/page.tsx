@@ -36,6 +36,8 @@ interface ChatMsg {
   trace?: { tool: string }[];
 }
 
+const DANGEROUS_TOOLS = new Set(['post_clip', 'browser_task']);
+
 export default function Agents() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [presets, setPresets] = useState<Record<string, Preset>>({});
@@ -94,7 +96,7 @@ export default function Agents() {
     setFPrompt(
       'You manage this clipping operation: keep the clip library organized, write scroll-stopping captions with strong hooks and hashtags, and track Whop campaign submissions and earnings.'
     );
-    setFTools(new Set(tools.map((t) => t.name).filter((n) => n !== 'post_clip')));
+    setFTools(new Set(tools.map((t) => t.name).filter((n) => !DANGEROUS_TOOLS.has(n))));
     setFError('');
     setShowForm(true);
   }
@@ -209,11 +211,11 @@ export default function Agents() {
                   </div>
                 </div>
                 <div className="agent-tools-row">
-                  {a.tools.includes('post_clip') ? (
-                    <span className="tag tag-danger">can post</span>
-                  ) : (
+                  {!a.tools.includes('post_clip') && !a.tools.includes('browser_task') && (
                     <span className="tag">advisor</span>
                   )}
+                  {a.tools.includes('post_clip') && <span className="tag tag-danger">can post</span>}
+                  {a.tools.includes('browser_task') && <span className="tag tag-danger">can browse</span>}
                   <span className="tag">{a.tools.length} tools</span>
                 </div>
                 <div className="agent-actions">
@@ -305,7 +307,7 @@ export default function Agents() {
               <span className="label">Permissions (platform tools this agent may use)</span>
               <div className="tool-grid">
                 {tools.map((t) => (
-                  <label key={t.name} className={`tool-pill ${fTools.has(t.name) ? 'on' : ''} ${t.name === 'post_clip' ? 'danger' : ''}`} title={t.description}>
+                  <label key={t.name} className={`tool-pill ${fTools.has(t.name) ? 'on' : ''} ${DANGEROUS_TOOLS.has(t.name) ? 'danger' : ''}`} title={t.description}>
                     <input
                       type="checkbox"
                       checked={fTools.has(t.name)}
@@ -322,7 +324,9 @@ export default function Agents() {
                 ))}
               </div>
               <p className="hint" style={{ marginTop: 6 }}>
-                <strong>post_clip</strong> lets the agent publish to your TikTok accounts on its own — enable it only for agents you trust to act.
+                <strong>post_clip</strong> lets the agent publish to your TikTok accounts, and{' '}
+                <strong>browser_task</strong> lets it drive a real browser (with your saved logins if
+                you pass a profile) — enable these only for agents you trust to act.
               </p>
             </div>
             <button className="btn-primary btn-big" onClick={save} disabled={saving || !fName || (!fModel && !preset?.default_model)}>

@@ -10,6 +10,7 @@ A self-hosted clipping platform for a small team, deployable on Vercel. Upload a
 - **Whop integration** — connect your Whop API key (verified against the Whop v5 API, shows your company + recent payments where the key allows). Per-clip Content Rewards tracking: campaign URL, submitted post URL, status, views, earnings.
   > **Reality check:** Whop's public API has **no endpoint for submitting clips to Content Rewards campaigns** — submissions are done on the Whop campaign page. The Library gives you a fast submit-and-track loop instead, and agents can read/update the tracking.
 - **Agent containers** — plug in any AI API key and spin up agents with their own role, model, and permissions. Groq is a first-class preset (a free Groq key powers your whole agent team). Agents get real tools: list/inspect/update clips, write captions, check Whop status, read the activity log, and — only if you enable it per agent — **post clips to TikTok themselves**.
+- **Browser agent** — connect a [Browser Use Cloud](https://cloud.browser-use.com) key and agents with the `browser_task` permission can drive a real remote browser: start a task in plain English, watch it on a live view URL, poll for the result. Persistent logins come from Browser Use *profiles* (sign in to a site once inside a profile; agents reuse the session) — this is how an agent can submit posted clips to Whop Content Rewards campaigns for you.
 
 ## Setup
 
@@ -36,6 +37,7 @@ A self-hosted clipping platform for a small team, deployable on Vercel. Upload a
    | `SESSION_SECRET` | long random string — `openssl rand -base64 48` |
    | `GROQ_API_KEY` | *(optional)* from [console.groq.com](https://console.groq.com/keys); can also be set in Settings |
    | `WHOP_API_KEY` | *(optional)* from [whop.com/dashboard/developer](https://whop.com/dashboard/developer); can also be set in Settings |
+   | `BROWSERUSE_API_KEY` | *(optional)* from [cloud.browser-use.com](https://cloud.browser-use.com); can also be set in Settings |
    | `TIKTOK_REDIRECT_URI` | *(optional)* only if it differs from `https://<domain>/api/auth/callback` |
 
 5. Deploy, sign in, connect TikTok accounts, add agents.
@@ -60,6 +62,8 @@ Posting   browser → Blob (client upload, dodges the 4.5MB fn limit)
           → status polling via /v2/post/publish/status/fetch/
 Agents    /api/agents/[id]/chat → provider API (OpenAI-compatible or
           Anthropic) ⇄ tool loop over platform tools (max 8 rounds)
+Browser   browser_task tool → Browser Use Cloud v2 (async tasks, live
+          view URL, profiles for persistent logins, allowed-domain caps)
 Whop      v5 REST (Bearer key): company verify + payments; submissions
           tracked per clip (no public submissions API exists)
 ```
@@ -77,5 +81,6 @@ npm run dev
 
 - TikTok: 4GB / 10 min max video, 2200-char captions, per-account limits come from the creator-info check at post time.
 - One serverless invocation per account per post (300s cap) — typical clips are fine, multi-GB files may time out.
-- Agents with `post_clip` can publish real content — give that permission only to agents/prompts you trust, and prefer models with solid tool-calling (Groq `llama-3.3-70b-versatile` works well).
+- Agents with `post_clip` can publish real content and agents with `browser_task` can act on the web with your saved logins — give those permissions only to agents/prompts you trust, and prefer models with solid tool-calling (Groq `llama-3.3-70b-versatile` works well).
+- **Don't browser-automate TikTok uploads.** Automating tiktok.com's UI violates TikTok's Terms of Service, their bot detection (captchas, device checks) frequently blocks it, and it risks account bans — and Browser Use's file-upload support doesn't cover video files anyway. Use the built-in Content Posting API for TikTok (that's what it's for); point the browser agent at Whop submissions, campaign research, and other web chores instead.
 - Posting identical videos across many accounts can trip TikTok's duplicated-content rules; vary captions/timing and follow [TikTok's Community Guidelines](https://www.tiktok.com/community-guidelines) and Whop campaign rules.

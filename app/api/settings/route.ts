@@ -10,6 +10,7 @@ export async function GET() {
   return NextResponse.json({
     whop_api_key_masked: maskSecret(s.whop_api_key),
     groq_api_key_masked: maskSecret(s.groq_api_key),
+    browseruse_api_key_masked: maskSecret(s.browseruse_api_key),
     default_hashtags: s.default_hashtags ?? ''
   });
 }
