@@ -6,13 +6,28 @@ import { decrypt, encrypt } from './crypto';
 // workspace-wide fallbacks so nothing breaks before keys are entered.
 
 const COLLECTION = 'usersettings';
-const SECRET_FIELDS = new Set(['whop_api_key', 'groq_api_key', 'browseruse_api_key']);
-const ALLOWED_FIELDS = ['whop_api_key', 'groq_api_key', 'browseruse_api_key', 'default_hashtags'];
+const SECRET_FIELDS = new Set([
+  'whop_api_key',
+  'groq_api_key',
+  'browseruse_api_key',
+  'tiktok_client_key',
+  'tiktok_client_secret'
+]);
+const ALLOWED_FIELDS = [
+  'whop_api_key',
+  'groq_api_key',
+  'browseruse_api_key',
+  'tiktok_client_key',
+  'tiktok_client_secret',
+  'default_hashtags'
+];
 
 export interface Settings {
   whop_api_key?: string;
   groq_api_key?: string;
   browseruse_api_key?: string;
+  tiktok_client_key?: string;
+  tiktok_client_secret?: string;
   default_hashtags?: string;
 }
 
@@ -27,6 +42,12 @@ export async function getSettings(uid: string): Promise<Settings> {
   if (!settings.whop_api_key && process.env.WHOP_API_KEY) settings.whop_api_key = process.env.WHOP_API_KEY;
   if (!settings.browseruse_api_key && process.env.BROWSERUSE_API_KEY) {
     settings.browseruse_api_key = process.env.BROWSERUSE_API_KEY;
+  }
+  if (!settings.tiktok_client_key && process.env.TIKTOK_CLIENT_KEY) {
+    settings.tiktok_client_key = process.env.TIKTOK_CLIENT_KEY;
+  }
+  if (!settings.tiktok_client_secret && process.env.TIKTOK_CLIENT_SECRET) {
+    settings.tiktok_client_secret = process.env.TIKTOK_CLIENT_SECRET;
   }
   return settings;
 }

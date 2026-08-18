@@ -18,6 +18,8 @@ export interface StoredAccount {
   refresh_expires_at: number;
   scope: string;
   added_by?: string;
+  /** uid of the member who connected it — their TikTok app creds refresh it */
+  owner_uid?: string;
 }
 
 function unpack(enc: string | null): StoredAccount | null {

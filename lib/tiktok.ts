@@ -15,19 +15,14 @@ export interface TokenSet {
   scope: string;
 }
 
-function creds() {
-  const client_key = process.env.TIKTOK_CLIENT_KEY;
-  const client_secret = process.env.TIKTOK_CLIENT_SECRET;
-  if (!client_key || !client_secret) {
-    throw new Error('TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET env vars are not set');
-  }
-  return { client_key, client_secret };
+export interface TikTokCreds {
+  client_key: string;
+  client_secret: string;
 }
 
-export function buildAuthUrl(redirectUri: string, state: string): string {
-  const { client_key } = creds();
+export function buildAuthUrl(creds: TikTokCreds, redirectUri: string, state: string): string {
   const params = new URLSearchParams({
-    client_key,
+    client_key: creds.client_key,
     response_type: 'code',
     scope: SCOPES,
     redirect_uri: redirectUri,
@@ -52,22 +47,20 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenSet> {
   return data as TokenSet;
 }
 
-export function exchangeCode(code: string, redirectUri: string): Promise<TokenSet> {
-  const { client_key, client_secret } = creds();
+export function exchangeCode(creds: TikTokCreds, code: string, redirectUri: string): Promise<TokenSet> {
   return tokenRequest({
-    client_key,
-    client_secret,
+    client_key: creds.client_key,
+    client_secret: creds.client_secret,
     code,
     grant_type: 'authorization_code',
     redirect_uri: redirectUri
   });
 }
 
-export function refreshTokens(refreshToken: string): Promise<TokenSet> {
-  const { client_key, client_secret } = creds();
+export function refreshTokens(creds: TikTokCreds, refreshToken: string): Promise<TokenSet> {
   return tokenRequest({
-    client_key,
-    client_secret,
+    client_key: creds.client_key,
+    client_secret: creds.client_secret,
     grant_type: 'refresh_token',
     refresh_token: refreshToken
   });

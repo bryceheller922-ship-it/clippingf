@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCode, getUserInfo } from '@/lib/tiktok';
-import { redirectUriFor } from '@/lib/auth';
+import { redirectUriFor, tiktokCredsFor } from '@/lib/auth';
 import { writeAccount, type StoredAccount } from '@/lib/store';
-import { getUser } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { logActivity } from '@/lib/activity';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const home = new URL('/', url.origin);
+  const home = new URL('/accounts', url.origin);
 
   const fail = (msg: string) => {
     home.searchParams.set('error', msg);
@@ -28,8 +28,9 @@ export async function GET(req: NextRequest) {
   if (!state || !expectedState || state !== expectedState) return fail('OAuth state mismatch — try connecting again');
 
   try {
-    const user = await getUser(req);
-    const tokens = await exchangeCode(code, redirectUriFor(req));
+    const user = await getSession(req);
+    const creds = await tiktokCredsFor(user.uid);
+    const tokens = await exchangeCode(creds, code, redirectUriFor(req));
     const info = await getUserInfo(tokens.access_token);
     const acct: StoredAccount = {
       open_id: tokens.open_id,
@@ -40,10 +41,11 @@ export async function GET(req: NextRequest) {
       expires_at: Date.now() + tokens.expires_in * 1000,
       refresh_expires_at: Date.now() + tokens.refresh_expires_in * 1000,
       scope: tokens.scope,
-      added_by: user
+      added_by: user.email,
+      owner_uid: user.uid
     };
     await writeAccount(acct);
-    await logActivity(user, 'connect_account', `Connected TikTok account @${info.display_name}`);
+    await logActivity(user.email, 'connect_account', `Connected TikTok account @${info.display_name}`);
     home.searchParams.set('connected', info.display_name);
     const res = NextResponse.redirect(home);
     res.cookies.set('tt_oauth_state', '', { path: '/', maxAge: 0 });

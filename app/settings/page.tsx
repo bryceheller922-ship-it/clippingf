@@ -13,9 +13,13 @@ export default function Settings() {
   const [whopMasked, setWhopMasked] = useState('');
   const [groqMasked, setGroqMasked] = useState('');
   const [buMasked, setBuMasked] = useState('');
+  const [ttKeyMasked, setTtKeyMasked] = useState('');
+  const [ttSecretMasked, setTtSecretMasked] = useState('');
   const [whopKey, setWhopKey] = useState('');
   const [groqKey, setGroqKey] = useState('');
   const [buKey, setBuKey] = useState('');
+  const [ttKey, setTtKey] = useState('');
+  const [ttSecret, setTtSecret] = useState('');
   const [hashtags, setHashtags] = useState('');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -27,6 +31,8 @@ export default function Settings() {
     setWhopMasked(s.whop_api_key_masked ?? '');
     setGroqMasked(s.groq_api_key_masked ?? '');
     setBuMasked(s.browseruse_api_key_masked ?? '');
+    setTtKeyMasked(s.tiktok_client_key_masked ?? '');
+    setTtSecretMasked(s.tiktok_client_secret_masked ?? '');
     setHashtags(s.default_hashtags ?? '');
   }, []);
 
@@ -41,6 +47,8 @@ export default function Settings() {
     if (whopKey) patch.whop_api_key = whopKey;
     if (groqKey) patch.groq_api_key = groqKey;
     if (buKey) patch.browseruse_api_key = buKey;
+    if (ttKey) patch.tiktok_client_key = ttKey;
+    if (ttSecret) patch.tiktok_client_secret = ttSecret;
     const res = await fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -50,6 +58,8 @@ export default function Settings() {
     setWhopKey('');
     setGroqKey('');
     setBuKey('');
+    setTtKey('');
+    setTtSecret('');
     setSaving(false);
     load();
   }
@@ -75,6 +85,43 @@ export default function Settings() {
           keys of whoever triggers them (missions use their creator&apos;s keys).
         </p>
       </div>
+
+      <section className="card">
+        <h2>TikTok developer app</h2>
+        <p className="hint" style={{ marginBottom: 14 }}>
+          Create an app at{' '}
+          <a href="https://developers.tiktok.com" target="_blank" rel="noreferrer">
+            developers.tiktok.com
+          </a>{' '}
+          with <strong>Login Kit</strong> + <strong>Content Posting API</strong>, redirect URI{' '}
+          <code>https://&lt;this-domain&gt;/api/auth/callback</code>, and scopes{' '}
+          <code>user.info.basic</code>, <code>video.upload</code>, <code>video.publish</code>. Then
+          paste its credentials here — connecting TikTok accounts and refreshing their tokens uses{' '}
+          <em>your</em> app credentials.
+        </p>
+        <div className="row">
+          <label className="field">
+            <span className="label">Client key {ttKeyMasked && `(saved: ${ttKeyMasked})`}</span>
+            <input
+              type="password"
+              className="pw"
+              value={ttKey}
+              onChange={(e) => setTtKey(e.target.value)}
+              placeholder={ttKeyMasked ? 'Enter a new key to replace' : 'aw…'}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Client secret {ttSecretMasked && `(saved: ${ttSecretMasked})`}</span>
+            <input
+              type="password"
+              className="pw"
+              value={ttSecret}
+              onChange={(e) => setTtSecret(e.target.value)}
+              placeholder={ttSecretMasked ? 'Enter a new secret to replace' : ''}
+            />
+          </label>
+        </div>
+      </section>
 
       <section className="card">
         <h2>Whop</h2>

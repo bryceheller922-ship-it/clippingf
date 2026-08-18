@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { buildAuthUrl } from '@/lib/tiktok';
-import { redirectUriFor } from '@/lib/auth';
+import { redirectUriFor, tiktokCredsFor } from '@/lib/auth';
+import { getUid } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
-export function GET(req: NextRequest) {
+export async function GET(req: NextRequest) {
   const state = randomBytes(16).toString('hex');
   let authUrl: string;
   try {
-    authUrl = buildAuthUrl(redirectUriFor(req), state);
+    const creds = await tiktokCredsFor(await getUid(req));
+    authUrl = buildAuthUrl(creds, redirectUriFor(req), state);
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    const back = new URL('/accounts', req.url);
+    back.searchParams.set('error', (e as Error).message);
+    return NextResponse.redirect(back);
   }
   const res = NextResponse.redirect(authUrl);
   res.cookies.set('tt_oauth_state', state, {

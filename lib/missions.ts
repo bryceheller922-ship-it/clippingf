@@ -22,6 +22,8 @@ export interface Mission {
   last_result: string;
   last_error: string;
   runs: number;
+  /** true while a run is in flight — the Ops Map animates it */
+  running?: boolean;
   created_by: string; // email, for display
   created_by_uid: string; // whose API keys the mission runs with
   created_at: number;
@@ -65,6 +67,8 @@ export async function runMission(m: Mission): Promise<Mission> {
   const agent = await getAgent(m.agent_id);
   m.last_run_at = Date.now();
   m.runs = (m.runs ?? 0) + 1;
+  m.running = true;
+  await saveMission(m);
   try {
     if (!agent) throw new Error('Assigned agent no longer exists');
     if (!agent.enabled) throw new Error('Assigned agent is disabled');
@@ -76,6 +80,7 @@ export async function runMission(m: Mission): Promise<Mission> {
     m.last_error = (e as Error).message.slice(0, 1000);
     await logActivity('autopilot', 'mission_error', `Mission "${m.name}" failed: ${m.last_error.slice(0, 180)}`);
   }
+  m.running = false;
   await saveMission(m);
   return m;
 }

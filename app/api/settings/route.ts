@@ -11,6 +11,8 @@ export async function GET(req: NextRequest) {
     whop_api_key_masked: maskSecret(s.whop_api_key),
     groq_api_key_masked: maskSecret(s.groq_api_key),
     browseruse_api_key_masked: maskSecret(s.browseruse_api_key),
+    tiktok_client_key_masked: maskSecret(s.tiktok_client_key),
+    tiktok_client_secret_masked: maskSecret(s.tiktok_client_secret),
     default_hashtags: s.default_hashtags ?? ''
   });
 }
