@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, verifySessionValue } from './lib/session';
 
-const PUBLIC_PATHS = new Set(['/login', '/api/auth/login']);
+// /api/autopilot/tick authenticates itself with CRON_SECRET (Vercel Cron).
+const PUBLIC_PATHS = new Set(['/login', '/api/auth/session', '/api/autopilot/tick']);
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

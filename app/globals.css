@@ -156,7 +156,12 @@ textarea { resize: vertical; min-height: 70px; }
 .nav-links a:hover { color: var(--text); }
 .nav-links a.active { color: var(--text); background: var(--panel-2); }
 .nav-user { display: flex; align-items: center; gap: 8px; }
-.user-badge { font-size: 13px; color: var(--cyan); font-weight: 700; }
+.user-badge { font-size: 12px; color: var(--cyan); font-weight: 700; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-accounts {
+  color: var(--text); text-decoration: none; font-size: 14px; font-weight: 700;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2);
+}
+.nav-accounts:hover, .nav-accounts.active { border-color: var(--cyan); color: var(--cyan); }
 
 /* ---------- login ---------- */
 .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -215,6 +220,24 @@ textarea { resize: vertical; min-height: 70px; }
 .chat-trace { font-size: 11px; color: var(--amber); margin-bottom: 4px; }
 .chat-input-row { display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
 .chat-input-row input { flex: 1; }
+
+/* ---------- multi-video post ---------- */
+.video-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-top: 12px; }
+.video-card textarea { background: var(--panel); margin-top: 10px; }
+.video-card-head { display: flex; align-items: center; gap: 10px; }
+.video-card .name { font-weight: 700; font-size: 14px; }
+.result-sub { margin-left: 22px; }
+
+/* ---------- missions ---------- */
+.mission { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; background: var(--panel-2); }
+.mission-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; }
+.mission-head .name { font-weight: 700; font-size: 14px; }
+.mission-head .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.mission-head .dot.ok { background: var(--green); }
+.mission-head .dot.fail { background: var(--red); }
+.mission-head .dot.pending { background: var(--amber); }
+.mission-body { padding: 0 14px 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.mission-form { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
 
 /* ---------- activity ---------- */
 .activity { display: flex; flex-direction: column; gap: 6px; }

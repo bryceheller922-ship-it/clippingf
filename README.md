@@ -1,86 +1,89 @@
 # ClippingF — the clipping workspace
 
-A self-hosted clipping platform for a small team, deployable on Vercel. Upload a clip once, post it to **every connected TikTok account at the same time**, keep a shared **clip library**, track **Whop earnings** per clip, and run **AI agent containers** (Groq, OpenAI, Anthropic, OpenRouter, or any OpenAI-compatible API) that help manage the operation.
+A self-hosted clipping platform for a small team, deployable on Vercel. Upload clips once, post them to **multiple TikTok accounts** (same video everywhere, or different videos per account), keep a shared **clip library**, track **Whop earnings** per clip, and run **AI agent containers** — including **Autopilot missions** that work the pipeline on a schedule.
 
-## What's inside
+## Stack
 
-- **Multi-account TikTok posting** — official Login Kit + Content Posting API. Direct post (caption, privacy, comment/duet/stitch toggles) or send-as-draft to each account's TikTok inbox. Live per-account publish status.
-- **Team workspace** — you and your business partner each get a login (`APP_USERS` env var). TikTok accounts, clips, agents and settings are shared; an activity log shows who (or which agent) did what.
-- **Clip library** — every upload is stored (Vercel Blob + Upstash Redis metadata) with title, notes, posting history, and one-click reposting to any set of accounts.
-- **Whop integration** — connect your Whop API key (verified against the Whop v5 API, shows your company + recent payments where the key allows). Per-clip Content Rewards tracking: campaign URL, submitted post URL, status, views, earnings.
-  > **Reality check:** Whop's public API has **no endpoint for submitting clips to Content Rewards campaigns** — submissions are done on the Whop campaign page. The Library gives you a fast submit-and-track loop instead, and agents can read/update the tracking.
-- **Agent containers** — plug in any AI API key and spin up agents with their own role, model, and permissions. Groq is a first-class preset (a free Groq key powers your whole agent team). Agents get real tools: list/inspect/update clips, write captions, check Whop status, read the activity log, and — only if you enable it per agent — **post clips to TikTok themselves**.
-- **Browser agent** — connect a [Browser Use Cloud](https://cloud.browser-use.com) key and agents with the `browser_task` permission can drive a real remote browser: start a task in plain English, watch it on a live view URL, poll for the result. Persistent logins come from Browser Use *profiles* (sign in to a site once inside a profile; agents reuse the session) — this is how an agent can submit posted clips to Whop Content Rewards campaigns for you.
+- **Firebase Auth** — email/password + Google sign-in, gated by an `ALLOWED_EMAILS` allowlist so only you and your partner get in
+- **Supabase** — Postgres (`docs` table) for all workspace data + Storage (public `clips` bucket) for video files, uploaded straight from the browser via signed URLs
+- **TikTok Content Posting API** — official multi-account posting (direct post or draft-to-inbox)
+- **Whop v5 API** — key verification + payments; per-clip Content Rewards tracking (Whop has **no public clip-submission API** — the browser agent covers that step)
+- **Agent containers** — any AI API (Groq preset first-class, OpenAI/OpenRouter/Together/Anthropic/custom OpenAI-compatible), each with its own role, model, encrypted key, and per-tool permissions
+- **Browser Use Cloud** — agents with the `browser_task` permission drive a real remote browser (persistent-login profiles, live view URL)
+- **Autopilot** — missions run agents on a Vercel Cron schedule with full tool access
 
 ## Setup
 
-### 1. TikTok developer app
+### 1. Firebase (auth)
+
+1. [console.firebase.google.com](https://console.firebase.google.com) → create a project → **Authentication** → enable **Email/Password** and **Google** sign-in.
+2. Add a Web App (project settings) and copy `apiKey`, `authDomain`, `projectId` into the `NEXT_PUBLIC_FIREBASE_*` env vars.
+3. Authentication → Settings → **Authorized domains**: add your Vercel domain.
+4. Set `ALLOWED_EMAILS` to you + your partner's emails — anyone else who signs in is rejected at session time.
+
+### 2. Supabase (data + video storage)
+
+1. [supabase.com](https://supabase.com) → create a project.
+2. SQL editor → run **`supabase/schema.sql`** (creates the `docs` table and the public `clips` storage bucket).
+3. Settings → API → copy the **Project URL** → `SUPABASE_URL`, and the **service_role** key → `SUPABASE_SERVICE_ROLE_KEY` (server-only; never exposed to the browser).
+4. Storage → the `clips` bucket's file-size limit defaults to 50MB on the free tier — raise it in bucket settings if your clips are bigger.
+
+### 3. TikTok developer app
 
 1. [developers.tiktok.com](https://developers.tiktok.com) → create an app, add **Login Kit** + **Content Posting API**.
-2. Redirect URI: `https://<your-vercel-domain>/api/auth/callback`.
-3. Scopes: `user.info.basic`, `video.upload`, `video.publish`.
-4. Copy the Client key and secret.
+2. Redirect URI: `https://<your-vercel-domain>/api/auth/callback`; scopes `user.info.basic`, `video.upload`, `video.publish`.
 
-> **Sandbox note:** until TikTok audits your app, only test accounts added in the developer portal can connect and direct posts are forced to **Private (only me)**. The app handles this automatically. Submit for review to unlock public posting.
+> Until TikTok audits your app: only test accounts can connect, and direct posts are forced to **Private (only me)** (handled automatically).
 
-### 2. Deploy to Vercel
+### 4. Deploy to Vercel
 
-1. Import the repo at [vercel.com/new](https://vercel.com/new).
-2. **Storage → Blob** — attach a Blob store (video files; adds `BLOB_READ_WRITE_TOKEN`).
-3. **Storage → Upstash for Redis** — attach a Redis store (shared workspace data; adds `KV_REST_API_URL`/`KV_REST_API_TOKEN`).
-4. Environment variables:
+Import the repo at [vercel.com/new](https://vercel.com/new) and set the env vars from `.env.example`:
 
-   | Variable | Value |
-   |---|---|
-   | `APP_USERS` | `bryce:yourpassword,partner:theirpassword` |
-   | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | from TikTok developer portal |
-   | `SESSION_SECRET` | long random string — `openssl rand -base64 48` |
-   | `GROQ_API_KEY` | *(optional)* from [console.groq.com](https://console.groq.com/keys); can also be set in Settings |
-   | `WHOP_API_KEY` | *(optional)* from [whop.com/dashboard/developer](https://whop.com/dashboard/developer); can also be set in Settings |
-   | `BROWSERUSE_API_KEY` | *(optional)* from [cloud.browser-use.com](https://cloud.browser-use.com); can also be set in Settings |
-   | `TIKTOK_REDIRECT_URI` | *(optional)* only if it differs from `https://<domain>/api/auth/callback` |
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_FIREBASE_API_KEY` / `_AUTH_DOMAIN` / `_PROJECT_ID` | from Firebase |
+| `ALLOWED_EMAILS` | `you@gmail.com,partner@gmail.com` |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | from Supabase |
+| `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | from TikTok |
+| `SESSION_SECRET` | `openssl rand -base64 48` |
+| `CRON_SECRET` | `openssl rand -hex 24` — protects the Autopilot cron |
+| `GROQ_API_KEY` / `WHOP_API_KEY` / `BROWSERUSE_API_KEY` | *(optional fallbacks — users normally save their own in the app)* |
 
-5. Deploy, sign in, connect TikTok accounts, add agents.
-
-If the build rejects `maxDuration = 300` (plan limit), lower it in `app/api/publish/route.ts` and `app/api/agents/[id]/chat/route.ts`.
+The included `vercel.json` schedules the Autopilot cron hourly. **Vercel Hobby runs crons once a day** — missions still respect their own intervals, and the **Run now** button works any time. If the build rejects `maxDuration = 300`, lower it in the routes that set it.
 
 ## Using it
 
-- **Post** — pick accounts, drop a video, caption it, post. The clip lands in the Library automatically. To connect a second TikTok account, use *switch account* on TikTok's login screen.
-- **Library** — repost any clip to any accounts, keep notes, and run the Whop loop: post → open campaign → submit your post URL on Whop → track status/views/earnings on the clip.
-- **Agents** — create a container per job: a Groq caption writer, an Anthropic strategist, a manager with `post_clip` rights that can publish for you after you confirm in chat. Each agent's key is stored encrypted; each tool is opt-in per agent (`post_clip` is off by default).
-- **Settings** — Whop key + connection test, workspace Groq key, default hashtags.
+- **Sign in** (top of everything): Firebase login; each member has their own identity.
+- **Accounts (top right)**: connect/disconnect the workspace's TikTok accounts.
+- **Post**: add one or many videos; each video gets its own caption and its own set of target accounts — same video everywhere, or different videos to different accounts, in one click. Everything is saved to the Library.
+- **Library**: repost clips, keep notes, track each clip's Whop campaign (URL, submitted post, status, views, earnings).
+- **My Keys**: every member saves their own Groq / Whop / Browser Use keys. Agents use the keys of whoever invoked them.
+- **Agents**: create agent containers; give trusted ones `post_clip` (publish to TikTok) and `browser_task` (drive a real browser via Browser Use profiles — that's how Whop submissions happen).
+- **Autopilot missions** (on the Agents page): a standing goal + an agent + an interval. Each run the agent inspects the workspace, does what its tools allow, records state on clips, and files a report. Example goal:
+  > Check the clip library for ready clips. Write strong captions and post each to all TikTok accounts. Then use browser_task with the "whop" profile to submit the posted TikTok URLs to our campaign at https://whop.com/… and update each clip's Whop tracking. Report earnings changes.
 
-## Architecture
+## What's automated vs. not (honest edition)
 
-```
-Auth      APP_USERS env → HMAC-signed session cookie (middleware-gated)
-Storage   Vercel Blob (videos) + Upstash Redis (accounts, clips, agents,
-          settings, activity) — secrets AES-256-GCM encrypted at rest
-Posting   browser → Blob (client upload, dodges the 4.5MB fn limit)
-          → /api/publish per account → TikTok init + chunked upload
-          → status polling via /v2/post/publish/status/fetch/
-Agents    /api/agents/[id]/chat → provider API (OpenAI-compatible or
-          Anthropic) ⇄ tool loop over platform tools (max 8 rounds)
-Browser   browser_task tool → Browser Use Cloud v2 (async tasks, live
-          view URL, profiles for persistent logins, allowed-domain caps)
-Whop      v5 REST (Bearer key): company verify + payments; submissions
-          tracked per clip (no public submissions API exists)
-```
+| Step | Status |
+|---|---|
+| Posting to many TikTok accounts | ✅ official API, fully automated (agents can do it via `post_clip`) |
+| Whop campaign submission | ✅ via browser agent + logged-in Whop profile (no public API exists) |
+| Whop earnings/status tracking | ✅ tracked per clip; agents read/update it; payments visible via Whop API where the key allows |
+| Finding campaigns / research | ✅ browser agent can browse and report |
+| **Cutting clips from source videos** | ⚠️ not server-side — there's no video editor in a serverless function. Agents can research and propose clips (source, timestamps, hooks) in their reports; you cut and upload. |
+| **Instagram posting** | ⚠️ not wired in — Instagram's official content API requires a Business/Creator account + Meta app review. Agents can attempt it via `browser_task`, but automating instagram.com violates their ToS and risks bans, same as TikTok UI automation. |
+| TikTok via browser automation | ❌ deliberately not — ToS violation + ban risk; the official API does this properly |
 
 ## Local development
 
 ```bash
 npm install
 cp .env.example .env.local   # fill in values
-npx vercel link && npx vercel env pull .env.local   # pulls Blob/Redis tokens
 npm run dev
 ```
 
-## Limits & notes
+## Notes
 
-- TikTok: 4GB / 10 min max video, 2200-char captions, per-account limits come from the creator-info check at post time.
-- One serverless invocation per account per post (300s cap) — typical clips are fine, multi-GB files may time out.
-- Agents with `post_clip` can publish real content and agents with `browser_task` can act on the web with your saved logins — give those permissions only to agents/prompts you trust, and prefer models with solid tool-calling (Groq `llama-3.3-70b-versatile` works well).
-- **Don't browser-automate TikTok uploads.** Automating tiktok.com's UI violates TikTok's Terms of Service, their bot detection (captchas, device checks) frequently blocks it, and it risks account bans — and Browser Use's file-upload support doesn't cover video files anyway. Use the built-in Content Posting API for TikTok (that's what it's for); point the browser agent at Whop submissions, campaign research, and other web chores instead.
-- Posting identical videos across many accounts can trip TikTok's duplicated-content rules; vary captions/timing and follow [TikTok's Community Guidelines](https://www.tiktok.com/community-guidelines) and Whop campaign rules.
+- All secrets (TikTok tokens, agent keys, user API keys) are AES-256-GCM encrypted at rest in Supabase; sessions are HMAC-signed cookies issued after Firebase ID-token verification.
+- One serverless invocation per account per post (≤300s); TikTok caps: 4GB / 10 min, 2200-char captions.
+- Duplicated content across many accounts can trip TikTok's rules — vary captions/timing and follow [TikTok's Community Guidelines](https://www.tiktok.com/community-guidelines) and each Whop campaign's rules.

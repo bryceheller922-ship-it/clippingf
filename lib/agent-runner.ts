@@ -3,7 +3,7 @@
 // loops until the model produces a final text answer.
 
 import { resolveApiKey, type AgentConfig } from './agents';
-import { ALL_TOOLS, executeTool } from './agent-tools';
+import { ALL_TOOLS, executeTool, type ToolContext } from './agent-tools';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -40,16 +40,16 @@ function workspaceContext(agent: AgentConfig): string {
     .join('\n');
 }
 
-export async function runAgent(agent: AgentConfig, messages: ChatMessage[]): Promise<AgentRunResult> {
-  const apiKey = await resolveApiKey(agent);
+export async function runAgent(agent: AgentConfig, messages: ChatMessage[], uid: string): Promise<AgentRunResult> {
+  const apiKey = await resolveApiKey(agent, uid);
   const tools = ALL_TOOLS.filter((t) => agent.tools.includes(t.name));
-  const actor = `agent:${agent.name}`;
+  const ctx: ToolContext = { actor: `agent:${agent.name}`, uid, allowed: agent.tools };
   const trace: ToolTraceEntry[] = [];
 
   if (agent.protocol === 'anthropic') {
-    return runAnthropic(agent, apiKey, messages, tools, actor, trace);
+    return runAnthropic(agent, apiKey, messages, tools, ctx, trace);
   }
-  return runOpenAI(agent, apiKey, messages, tools, actor, trace);
+  return runOpenAI(agent, apiKey, messages, tools, ctx, trace);
 }
 
 // ---------- OpenAI-compatible (Groq, OpenAI, OpenRouter, Together, custom) ----------
@@ -65,7 +65,7 @@ async function runOpenAI(
   apiKey: string,
   messages: ChatMessage[],
   tools: (typeof ALL_TOOLS)[number][],
-  actor: string,
+  ctx: ToolContext,
   trace: ToolTraceEntry[]
 ): Promise<AgentRunResult> {
   const convo: Record<string, unknown>[] = [
@@ -109,7 +109,7 @@ async function runOpenAI(
       } catch {
         // leave args empty on parse failure
       }
-      const result = await executeTool(call.function.name, args, actor, agent.tools);
+      const result = await executeTool(call.function.name, args, ctx);
       trace.push({ tool: call.function.name, args, result });
       convo.push({
         role: 'tool',
@@ -136,7 +136,7 @@ async function runAnthropic(
   apiKey: string,
   messages: ChatMessage[],
   tools: (typeof ALL_TOOLS)[number][],
-  actor: string,
+  ctx: ToolContext,
   trace: ToolTraceEntry[]
 ): Promise<AgentRunResult> {
   const convo: Record<string, unknown>[] = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -175,7 +175,7 @@ async function runAnthropic(
     convo.push({ role: 'assistant', content: blocks });
     const results = [];
     for (const use of toolUses) {
-      const result = await executeTool(use.name!, use.input ?? {}, actor, agent.tools);
+      const result = await executeTool(use.name!, use.input ?? {}, ctx);
       trace.push({ tool: use.name!, args: use.input, result });
       results.push({
         type: 'tool_result',

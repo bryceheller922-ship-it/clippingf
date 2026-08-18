@@ -68,9 +68,12 @@ export default function Settings() {
     <main className="container">
       <div className="hero">
         <h1>
-          Workspace <span className="accent">Settings</span>
+          My <span className="accent">API keys</span>
         </h1>
-        <p>Shared by everyone who signs in to this workspace.</p>
+        <p>
+          Your personal keys — each workspace member saves their own here. Agents and tools use the
+          keys of whoever triggers them (missions use their creator&apos;s keys).
+        </p>
       </div>
 
       <section className="card">
@@ -116,14 +119,14 @@ export default function Settings() {
       </section>
 
       <section className="card">
-        <h2>Groq (workspace default)</h2>
+        <h2>Groq</h2>
         <p className="hint" style={{ marginBottom: 14 }}>
           Get a free key at{' '}
           <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">
             console.groq.com
           </a>
-          . Agent containers using the Groq preset fall back to this key when they don&apos;t have
-          their own, so one key powers your whole agent team.
+          . Agent containers using the Groq preset fall back to your key when they don&apos;t carry
+          their own.
         </p>
         <label className="field">
           <span className="label">Groq API key {groqMasked && `(saved: ${groqMasked})`}</span>
@@ -184,11 +187,11 @@ export default function Settings() {
       <section className="card">
         <h2>Team access</h2>
         <p className="hint">
-          Users are configured with the <code>APP_USERS</code> env var on Vercel —{' '}
-          <code>APP_USERS=&quot;bryce:secret,partner:secret2&quot;</code> gives you and your business
-          partner separate logins to this shared workspace (accounts, clips, agents and settings are
-          shared; the activity log shows who did what). Change it in Vercel → Settings → Environment
-          Variables, then redeploy.
+          Sign-in is Firebase Auth (email/password or Google). Who can join the workspace is
+          controlled by the <code>ALLOWED_EMAILS</code> env var on Vercel — e.g.{' '}
+          <code>ALLOWED_EMAILS=&quot;you@gmail.com,partner@gmail.com&quot;</code>. Accounts, clips,
+          agents and missions are shared; API keys on this page are per-person; the activity log
+          shows who did what.
         </p>
       </section>
     </main>

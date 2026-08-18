@@ -1,9 +1,13 @@
-import { redis } from './redis';
+import { dbGet, dbSet } from './db';
 import { decrypt, encrypt } from './crypto';
 
-// Workspace settings. Secret values (API keys) are encrypted at rest.
-const KEY = 'settings';
+// Per-user settings: every workspace member saves their OWN API keys in the
+// UI (Settings page). Secrets are encrypted at rest; env vars act as
+// workspace-wide fallbacks so nothing breaks before keys are entered.
+
+const COLLECTION = 'usersettings';
 const SECRET_FIELDS = new Set(['whop_api_key', 'groq_api_key', 'browseruse_api_key']);
+const ALLOWED_FIELDS = ['whop_api_key', 'groq_api_key', 'browseruse_api_key', 'default_hashtags'];
 
 export interface Settings {
   whop_api_key?: string;
@@ -12,14 +16,13 @@ export interface Settings {
   default_hashtags?: string;
 }
 
-export async function getSettings(): Promise<Settings> {
-  const raw = (await redis().hgetall<Record<string, string>>(KEY)) ?? {};
+export async function getSettings(uid: string): Promise<Settings> {
+  const raw = (uid ? await dbGet<Record<string, string>>(COLLECTION, uid) : null) ?? {};
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw)) {
     out[k] = SECRET_FIELDS.has(k) ? decrypt(String(v)) ?? '' : String(v);
   }
   const settings = out as Settings;
-  // Env vars act as defaults so you can configure keys without the UI.
   if (!settings.groq_api_key && process.env.GROQ_API_KEY) settings.groq_api_key = process.env.GROQ_API_KEY;
   if (!settings.whop_api_key && process.env.WHOP_API_KEY) settings.whop_api_key = process.env.WHOP_API_KEY;
   if (!settings.browseruse_api_key && process.env.BROWSERUSE_API_KEY) {
@@ -28,18 +31,16 @@ export async function getSettings(): Promise<Settings> {
   return settings;
 }
 
-export async function patchSettings(patch: Record<string, string>): Promise<void> {
-  const allowed = ['whop_api_key', 'groq_api_key', 'browseruse_api_key', 'default_hashtags'];
-  const toSet: Record<string, string> = {};
-  const toDel: string[] = [];
-  for (const k of allowed) {
+export async function patchSettings(uid: string, patch: Record<string, string>): Promise<void> {
+  if (!uid) throw new Error('No user id in session');
+  const current = (await dbGet<Record<string, string>>(COLLECTION, uid)) ?? {};
+  for (const k of ALLOWED_FIELDS) {
     if (!(k in patch)) continue;
     const v = patch[k] ?? '';
-    if (v === '') toDel.push(k);
-    else toSet[k] = SECRET_FIELDS.has(k) ? encrypt(v) : v;
+    if (v === '') delete current[k];
+    else current[k] = SECRET_FIELDS.has(k) ? encrypt(v) : v;
   }
-  if (Object.keys(toSet).length) await redis().hset(KEY, toSet);
-  if (toDel.length) await redis().hdel(KEY, ...toDel);
+  await dbSet(COLLECTION, uid, current);
 }
 
 export function maskSecret(v?: string): string {

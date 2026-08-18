@@ -8,20 +8,20 @@ import { getSettings } from './settings';
 
 const API = 'https://api.browser-use.com/api/v2';
 
-async function apiKey(): Promise<string> {
-  const settings = await getSettings();
+async function apiKey(uid: string): Promise<string> {
+  const settings = await getSettings(uid);
   const key = settings.browseruse_api_key || process.env.BROWSERUSE_API_KEY;
   if (!key) {
-    throw new Error('No Browser Use API key configured — add one in Settings (get it at cloud.browser-use.com)');
+    throw new Error('No Browser Use API key configured — add yours in Settings (get it at cloud.browser-use.com)');
   }
   return key;
 }
 
-async function buFetch<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+async function buFetch<T>(uid: string, path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     method: init?.method ?? 'GET',
     headers: {
-      'X-Browser-Use-API-Key': await apiKey(),
+      'X-Browser-Use-API-Key': await apiKey(uid),
       'Content-Type': 'application/json'
     },
     body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
@@ -39,14 +39,14 @@ export interface BrowserTaskRef {
   sessionId?: string;
 }
 
-export function createBrowserTask(opts: {
+export function createBrowserTask(uid: string, opts: {
   task: string;
   profileId?: string;
   allowedDomains?: string[];
   startUrl?: string;
   maxSteps?: number;
 }): Promise<BrowserTaskRef> {
-  return buFetch<BrowserTaskRef>('/tasks', {
+  return buFetch<BrowserTaskRef>(uid, '/tasks', {
     method: 'POST',
     body: {
       task: opts.task,
@@ -67,8 +67,8 @@ interface RawTask {
   steps?: { url?: string; nextGoal?: string; evaluationPreviousGoal?: string }[];
 }
 
-export async function getBrowserTask(taskId: string) {
-  const t = await buFetch<RawTask>(`/tasks/${taskId}`);
+export async function getBrowserTask(uid: string, taskId: string) {
+  const t = await buFetch<RawTask>(uid, `/tasks/${taskId}`);
   return {
     id: t.id,
     status: t.status,
@@ -85,11 +85,7 @@ export interface BrowserProfile {
   name?: string;
 }
 
-export async function listProfiles(): Promise<BrowserProfile[]> {
-  const data = await buFetch<{ items?: BrowserProfile[]; profiles?: BrowserProfile[] }>('/profiles');
+export async function listProfiles(uid: string): Promise<BrowserProfile[]> {
+  const data = await buFetch<{ items?: BrowserProfile[]; profiles?: BrowserProfile[] }>(uid, '/profiles');
   return data.items ?? data.profiles ?? [];
-}
-
-export function createProfile(name: string): Promise<BrowserProfile> {
-  return buFetch<BrowserProfile>('/profiles', { method: 'POST', body: { name } });
 }

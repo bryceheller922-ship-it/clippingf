@@ -38,6 +38,20 @@ interface ChatMsg {
 
 const DANGEROUS_TOOLS = new Set(['post_clip', 'browser_task']);
 
+interface Mission {
+  id: string;
+  name: string;
+  goal: string;
+  agent_id: string;
+  enabled: boolean;
+  interval_hours: number;
+  last_run_at: number;
+  last_result: string;
+  last_error: string;
+  runs: number;
+  created_by: string;
+}
+
 export default function Agents() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [presets, setPresets] = useState<Record<string, Preset>>({});
@@ -58,6 +72,16 @@ export default function Agents() {
   const [fError, setFError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // missions state
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [mName, setMName] = useState('');
+  const [mGoal, setMGoal] = useState('');
+  const [mAgent, setMAgent] = useState('');
+  const [mInterval, setMInterval] = useState(24);
+  const [mBusy, setMBusy] = useState(false);
+  const [runningMission, setRunningMission] = useState<string | null>(null);
+  const [openMission, setOpenMission] = useState<string | null>(null);
+
   // chat state
   const [chatAgent, setChatAgent] = useState<Agent | null>(null);
   const [chat, setChat] = useState<ChatMsg[]>([]);
@@ -68,14 +92,63 @@ export default function Agents() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetch('/api/agents').then((r) => r.json());
+      const [data, m] = await Promise.all([
+        fetch('/api/agents').then((r) => r.json()),
+        fetch('/api/missions').then((r) => r.json())
+      ]);
       setAgents(data.agents ?? []);
       setPresets(data.presets ?? {});
       setTools(data.available_tools ?? []);
+      setMissions(m.missions ?? []);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  async function createMission() {
+    if (!mName.trim() || !mGoal.trim() || !mAgent) return;
+    setMBusy(true);
+    try {
+      const res = await fetch('/api/missions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: mName, goal: mGoal, agent_id: mAgent, interval_hours: mInterval })
+      });
+      if (res.ok) {
+        setMName('');
+        setMGoal('');
+        load();
+      }
+    } finally {
+      setMBusy(false);
+    }
+  }
+
+  async function patchMission(id: string, patch: Record<string, unknown>) {
+    await fetch(`/api/missions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch)
+    });
+    load();
+  }
+
+  async function deleteMissionUi(m: Mission) {
+    if (!confirm(`Delete mission "${m.name}"?`)) return;
+    await fetch(`/api/missions/${m.id}`, { method: 'DELETE' });
+    load();
+  }
+
+  async function runMissionNow(m: Mission) {
+    setRunningMission(m.id);
+    try {
+      await fetch(`/api/missions/${m.id}/run`, { method: 'POST' });
+    } finally {
+      setRunningMission(null);
+      setOpenMission(m.id);
+      load();
+    }
+  }
 
   useEffect(() => {
     load();
@@ -238,6 +311,119 @@ export default function Agents() {
               <div className="sub">{agents.length === 0 ? 'Start with a Groq manager' : 'Any provider or custom endpoint'}</div>
             </div>
           </div>
+
+          <section className="card" style={{ marginTop: 22 }}>
+            <h2>🛰️ Autopilot missions</h2>
+            <p className="hint" style={{ marginBottom: 14 }}>
+              Give an agent a standing goal and it runs on a schedule (Vercel Cron) — e.g. “check
+              our Whop campaigns, pick the best ready clips, post them to all TikTok accounts, then
+              submit the posted URLs to the campaign via browser and update tracking.” Each run
+              picks up where the last one left off. Missions use the enabled tools of their agent —
+              give it <strong>post_clip</strong> and <strong>browser_task</strong> for full
+              automation.
+            </p>
+
+            {missions.map((m) => {
+              const agent = agents.find((a) => a.id === m.agent_id);
+              return (
+                <div className="mission" key={m.id}>
+                  <div className="mission-head" onClick={() => setOpenMission(openMission === m.id ? null : m.id)}>
+                    <span className={`dot ${m.last_error ? 'fail' : m.runs > 0 ? 'ok' : 'pending'}`} />
+                    <div className="grow">
+                      <div className="name">{m.name}</div>
+                      <div className="sub">
+                        {agent ? `${agent.emoji} ${agent.name}` : '⚠️ agent missing'} · every {m.interval_hours}h ·{' '}
+                        {m.runs > 0 ? `${m.runs} runs, last ${new Date(m.last_run_at).toLocaleString()}` : 'never run'}
+                        {!m.enabled && ' · paused'}
+                      </div>
+                    </div>
+                    <button
+                      className="btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        runMissionNow(m);
+                      }}
+                      disabled={runningMission === m.id}
+                    >
+                      {runningMission === m.id ? 'Running…' : 'Run now'}
+                    </button>
+                    <button
+                      className="btn-ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        patchMission(m.id, { enabled: !m.enabled });
+                      }}
+                    >
+                      {m.enabled ? 'Pause' : 'Resume'}
+                    </button>
+                    <button
+                      className="btn-ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteMissionUi(m);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  {openMission === m.id && (
+                    <div className="mission-body">
+                      <div className="sub" style={{ marginBottom: 8 }}>Goal</div>
+                      <p style={{ fontSize: 14, whiteSpace: 'pre-wrap', marginBottom: 12 }}>{m.goal}</p>
+                      {m.last_error && <div className="banner err">Last run failed: {m.last_error}</div>}
+                      {m.last_result && (
+                        <>
+                          <div className="sub" style={{ marginBottom: 8 }}>Last report</div>
+                          <p style={{ fontSize: 14, whiteSpace: 'pre-wrap', color: 'var(--muted)' }}>{m.last_result}</p>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="mission-form">
+              <div className="row">
+                <label className="field">
+                  <span className="label">Mission name</span>
+                  <input type="text" value={mName} onChange={(e) => setMName(e.target.value)} placeholder="Whop pipeline" />
+                </label>
+                <label className="field">
+                  <span className="label">Agent</span>
+                  <select value={mAgent} onChange={(e) => setMAgent(e.target.value)}>
+                    <option value="">Pick an agent…</option>
+                    {agents.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.emoji} {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field" style={{ maxWidth: 140, minWidth: 140 }}>
+                  <span className="label">Every (hours)</span>
+                  <select value={mInterval} onChange={(e) => setMInterval(Number(e.target.value))}>
+                    {[1, 3, 6, 12, 24, 48, 168].map((h) => (
+                      <option key={h} value={h}>
+                        {h}h
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="field">
+                <span className="label">Goal (what should the agent do each run?)</span>
+                <textarea
+                  value={mGoal}
+                  onChange={(e) => setMGoal(e.target.value)}
+                  placeholder="Check the clip library for ready clips, write captions, post them to all TikTok accounts, then use the browser (whop profile) to submit posted URLs to our campaign at https://whop.com/… and update each clip's Whop tracking."
+                />
+              </label>
+              <button className="btn-primary" onClick={createMission} disabled={mBusy || !mName.trim() || !mGoal.trim() || !mAgent}>
+                {mBusy ? 'Creating…' : 'Create mission'}
+              </button>
+            </div>
+          </section>
         </>
       )}
 

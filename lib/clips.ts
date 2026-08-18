@@ -1,6 +1,6 @@
-import { redis } from './redis';
+import { dbDelete, dbGet, dbList, dbSet } from './db';
 
-const KEY = 'clips';
+const COLLECTION = 'clips';
 
 export interface ClipPost {
   open_id: string;
@@ -27,7 +27,7 @@ export interface Clip {
   title: string;
   notes: string;
   filename: string;
-  blob_url: string;
+  blob_url: string; // public Supabase Storage URL
   size: number;
   uploaded_by: string;
   created_at: number;
@@ -37,35 +37,20 @@ export interface Clip {
 }
 
 export async function listClips(): Promise<Clip[]> {
-  const all = await redis().hgetall<Record<string, Clip | string>>(KEY);
-  if (!all) return [];
-  const clips: Clip[] = [];
-  for (const v of Object.values(all)) {
-    try {
-      clips.push(typeof v === 'string' ? (JSON.parse(v) as Clip) : v);
-    } catch {
-      // skip corrupt entry
-    }
-  }
+  const clips = await dbList<Clip>(COLLECTION);
   return clips.sort((a, b) => b.created_at - a.created_at);
 }
 
-export async function getClip(id: string): Promise<Clip | null> {
-  const v = await redis().hget<Clip | string>(KEY, id);
-  if (!v) return null;
-  try {
-    return typeof v === 'string' ? (JSON.parse(v) as Clip) : v;
-  } catch {
-    return null;
-  }
+export function getClip(id: string): Promise<Clip | null> {
+  return dbGet<Clip>(COLLECTION, id);
 }
 
-export async function saveClip(clip: Clip): Promise<void> {
-  await redis().hset(KEY, { [clip.id]: JSON.stringify(clip) });
+export function saveClip(clip: Clip): Promise<void> {
+  return dbSet(COLLECTION, clip.id, clip);
 }
 
-export async function deleteClipRecord(id: string): Promise<void> {
-  await redis().hdel(KEY, id);
+export function deleteClipRecord(id: string): Promise<void> {
+  return dbDelete(COLLECTION, id);
 }
 
 export async function createClip(input: {

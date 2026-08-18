@@ -8,7 +8,7 @@ const LINKS = [
   { href: '/', label: 'Post' },
   { href: '/library', label: 'Library' },
   { href: '/agents', label: 'Agents' },
-  { href: '/settings', label: 'Settings' }
+  { href: '/settings', label: 'My Keys' }
 ];
 
 export default function Nav() {
@@ -28,6 +28,13 @@ export default function Nav() {
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
+    try {
+      const { firebaseAuth } = await import('@/lib/firebase-client');
+      const { signOut } = await import('firebase/auth');
+      await signOut(firebaseAuth());
+    } catch {
+      // Firebase sign-out is best-effort; the app session cookie is already cleared
+    }
     router.push('/login');
   }
 
@@ -45,6 +52,9 @@ export default function Nav() {
           ))}
         </div>
         <div className="nav-user">
+          <Link href="/accounts" className={`nav-accounts ${pathname === '/accounts' ? 'active' : ''}`}>
+            Accounts
+          </Link>
           {user && <span className="user-badge">{user}</span>}
           <button className="btn-ghost" onClick={logout}>
             Sign out

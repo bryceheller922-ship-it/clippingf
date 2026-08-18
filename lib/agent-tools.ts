@@ -160,7 +160,16 @@ export const DEFAULT_AGENT_TOOLS = ALL_TOOLS.map((t) => t.name).filter((n) => !D
 
 type Args = Record<string, unknown>;
 
-export async function executeTool(name: string, args: Args, actor: string, allowed: string[]): Promise<unknown> {
+export interface ToolContext {
+  /** activity-log label, e.g. "agent:Groq Manager" */
+  actor: string;
+  /** uid of the user this run acts on behalf of — resolves their personal API keys */
+  uid: string;
+  allowed: string[];
+}
+
+export async function executeTool(name: string, args: Args, ctx: ToolContext): Promise<unknown> {
+  const { actor, uid, allowed } = ctx;
   if (!allowed.includes(name)) {
     return { error: `Tool "${name}" is not enabled for this agent. Enabled tools: ${allowed.join(', ')}` };
   }
@@ -239,7 +248,7 @@ export async function executeTool(name: string, args: Args, actor: string, allow
       }
     }
     case 'get_whop_status': {
-      const settings = await getSettings();
+      const settings = await getSettings(uid);
       if (!settings.whop_api_key) return { connected: false, note: 'No Whop API key configured in Settings' };
       try {
         const company = await getCompany(settings.whop_api_key);
@@ -250,7 +259,7 @@ export async function executeTool(name: string, args: Args, actor: string, allow
     }
     case 'browser_task': {
       try {
-        const ref = await createBrowserTask({
+        const ref = await createBrowserTask(uid, {
           task: String(args.task ?? ''),
           profileId: args.profile_id ? String(args.profile_id) : undefined,
           allowedDomains: Array.isArray(args.allowed_domains) ? (args.allowed_domains as string[]) : undefined,
@@ -258,7 +267,7 @@ export async function executeTool(name: string, args: Args, actor: string, allow
           maxSteps: args.max_steps ? Number(args.max_steps) : undefined
         });
         await logActivity(actor, 'browser_task', `Started browser task ${ref.id}: ${String(args.task).slice(0, 140)}`);
-        const status = await getBrowserTask(ref.id).catch(() => null);
+        const status = await getBrowserTask(uid, ref.id).catch(() => null);
         return {
           task_id: ref.id,
           session_id: ref.sessionId,
@@ -271,14 +280,14 @@ export async function executeTool(name: string, args: Args, actor: string, allow
     }
     case 'browser_task_status': {
       try {
-        return await getBrowserTask(String(args.task_id ?? ''));
+        return await getBrowserTask(uid, String(args.task_id ?? ''));
       } catch (e) {
         return { error: (e as Error).message };
       }
     }
     case 'list_browser_profiles': {
       try {
-        return await listProfiles();
+        return await listProfiles(uid);
       } catch (e) {
         return { error: (e as Error).message };
       }

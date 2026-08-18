@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClip, listClips } from '@/lib/clips';
-import { isBlobUrl } from '@/lib/publish';
+import { isStorageUrl } from '@/lib/storage';
 import { getUser } from '@/lib/session';
 import { logActivity } from '@/lib/activity';
 
@@ -12,8 +12,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const { title, filename, blobUrl, size } = await req.json().catch(() => ({}));
-  if (!blobUrl || !size || !isBlobUrl(blobUrl)) {
-    return NextResponse.json({ error: 'blobUrl (Vercel Blob) and size are required' }, { status: 400 });
+  if (!blobUrl || !size || !isStorageUrl(blobUrl)) {
+    return NextResponse.json({ error: 'blobUrl (workspace storage URL) and size are required' }, { status: 400 });
   }
   const user = await getUser(req);
   const clip = await createClip({

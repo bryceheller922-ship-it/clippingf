@@ -1,4 +1,4 @@
-import { redis } from './redis';
+import { dbDelete, dbGet, dbList, dbSet } from './db';
 import { decrypt, encrypt } from './crypto';
 import { getSettings } from './settings';
 
@@ -7,7 +7,7 @@ import { getSettings } from './settings';
 // call. Any OpenAI-compatible API works (Groq, OpenAI, OpenRouter, Together,
 // local gateways, ...), plus Anthropic's native API.
 
-const KEY = 'agents';
+const COLLECTION = 'agents';
 
 export type AgentProtocol = 'openai' | 'anthropic';
 
@@ -18,7 +18,7 @@ export interface AgentConfig {
   preset: string;
   protocol: AgentProtocol;
   base_url: string;
-  /** encrypted at rest; empty string means "use the workspace Groq key" (groq preset only) */
+  /** encrypted at rest; empty string means "use the requesting user's Groq key" (groq preset only) */
   api_key: string;
   model: string;
   system_prompt: string;
@@ -72,48 +72,36 @@ export const AGENT_PRESETS: Record<
 };
 
 export async function listAgents(): Promise<AgentConfig[]> {
-  const all = await redis().hgetall<Record<string, AgentConfig | string>>(KEY);
-  if (!all) return [];
-  const agents: AgentConfig[] = [];
-  for (const v of Object.values(all)) {
-    try {
-      agents.push(typeof v === 'string' ? (JSON.parse(v) as AgentConfig) : v);
-    } catch {
-      // skip corrupt entry
-    }
-  }
+  const agents = await dbList<AgentConfig>(COLLECTION);
   return agents.sort((a, b) => a.created_at - b.created_at);
 }
 
-export async function getAgent(id: string): Promise<AgentConfig | null> {
-  const v = await redis().hget<AgentConfig | string>(KEY, id);
-  if (!v) return null;
-  try {
-    return typeof v === 'string' ? (JSON.parse(v) as AgentConfig) : v;
-  } catch {
-    return null;
-  }
+export function getAgent(id: string): Promise<AgentConfig | null> {
+  return dbGet<AgentConfig>(COLLECTION, id);
 }
 
-export async function saveAgent(agent: AgentConfig): Promise<void> {
-  await redis().hset(KEY, { [agent.id]: JSON.stringify(agent) });
+export function saveAgent(agent: AgentConfig): Promise<void> {
+  return dbSet(COLLECTION, agent.id, agent);
 }
 
-export async function deleteAgent(id: string): Promise<void> {
-  await redis().hdel(KEY, id);
+export function deleteAgent(id: string): Promise<void> {
+  return dbDelete(COLLECTION, id);
 }
 
-/** Resolve the runtime API key for an agent (decrypt, or fall back to the workspace Groq key). */
-export async function resolveApiKey(agent: AgentConfig): Promise<string> {
+/**
+ * Resolve the runtime API key for an agent: its own key first, otherwise the
+ * requesting user's Groq key from their personal settings (groq preset only).
+ */
+export async function resolveApiKey(agent: AgentConfig, uid: string): Promise<string> {
   if (agent.api_key) {
     const key = decrypt(agent.api_key);
     if (key) return key;
   }
   if (agent.preset === 'groq') {
-    const settings = await getSettings();
+    const settings = await getSettings(uid);
     if (settings.groq_api_key) return settings.groq_api_key;
   }
-  throw new Error(`Agent "${agent.name}" has no usable API key — edit the agent and add one`);
+  throw new Error(`Agent "${agent.name}" has no usable API key — add one to the agent or save your Groq key in Settings`);
 }
 
 export function encryptApiKey(plain: string): string {

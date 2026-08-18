@@ -1,6 +1,7 @@
-// Cookie sessions for the two-person workspace. Users come from the APP_USERS
-// env var ("bryce:secret,partner:othersecret"). Implemented with Web Crypto so
-// the same code runs in Edge middleware and Node route handlers.
+// App sessions: after Firebase Auth verifies who you are (see
+// firebase-verify.ts), we issue our own HMAC-signed cookie carrying uid +
+// email. Implemented with Web Crypto so the same code runs in Edge middleware
+// and Node route handlers.
 
 export const SESSION_COOKIE = 'cf_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -30,43 +31,46 @@ async function hmac(data: string): Promise<string> {
   return toB64url(new Uint8Array(sig));
 }
 
-export function parseUsers(): { name: string; pass: string }[] {
-  return (process.env.APP_USERS ?? '')
-    .split(',')
-    .map((pair) => pair.trim())
-    .filter(Boolean)
-    .map((pair) => {
-      const i = pair.indexOf(':');
-      return i > 0 ? { name: pair.slice(0, i), pass: pair.slice(i + 1) } : null;
-    })
-    .filter((u): u is { name: string; pass: string } => !!u);
+export interface SessionUser {
+  uid: string;
+  email: string;
 }
 
-export async function createSessionValue(username: string): Promise<string> {
-  const payload = `${toB64url(new TextEncoder().encode(username))}.${Date.now() + SESSION_TTL_MS}`;
+export async function createSessionValue(user: SessionUser): Promise<string> {
+  const body = toB64url(new TextEncoder().encode(JSON.stringify({ u: user.uid, e: user.email })));
+  const payload = `${body}.${Date.now() + SESSION_TTL_MS}`;
   return `${payload}.${await hmac(payload)}`;
 }
 
-export async function verifySessionValue(value: string | undefined): Promise<string | null> {
+export async function verifySessionValue(value: string | undefined): Promise<SessionUser | null> {
   if (!value) return null;
   const parts = value.split('.');
   if (parts.length !== 3) return null;
-  const [userB64, expStr, sig] = parts;
-  const payload = `${userB64}.${expStr}`;
+  const [body, expStr, sig] = parts;
+  const payload = `${body}.${expStr}`;
   try {
     if ((await hmac(payload)) !== sig) return null;
-  } catch {
-    return null;
-  }
-  if (Date.now() > Number(expStr)) return null;
-  try {
-    return new TextDecoder().decode(fromB64url(userB64));
+    if (Date.now() > Number(expStr)) return null;
+    const parsed = JSON.parse(new TextDecoder().decode(fromB64url(body)));
+    if (!parsed.u || !parsed.e) return null;
+    return { uid: String(parsed.u), email: String(parsed.e) };
   } catch {
     return null;
   }
 }
 
-/** Reads the logged-in username from a request (middleware already gates access). */
-export async function getUser(req: { cookies: { get(name: string): { value: string } | undefined } }): Promise<string> {
-  return (await verifySessionValue(req.cookies.get(SESSION_COOKIE)?.value)) ?? 'unknown';
+type CookieCarrier = { cookies: { get(name: string): { value: string } | undefined } };
+
+/** The logged-in user (middleware already gates access, so this rarely misses). */
+export async function getSession(req: CookieCarrier): Promise<SessionUser> {
+  return (await verifySessionValue(req.cookies.get(SESSION_COOKIE)?.value)) ?? { uid: '', email: 'unknown' };
+}
+
+/** Display name for activity logs. */
+export async function getUser(req: CookieCarrier): Promise<string> {
+  return (await getSession(req)).email;
+}
+
+export async function getUid(req: CookieCarrier): Promise<string> {
+  return (await getSession(req)).uid;
 }

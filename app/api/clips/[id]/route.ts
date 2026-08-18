@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { del } from '@vercel/blob';
+import { deleteStorageFile } from '@/lib/storage';
 import { deleteClipRecord, getClip, updateClip } from '@/lib/clips';
 import { getUser } from '@/lib/session';
 import { logActivity } from '@/lib/activity';
@@ -28,9 +28,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const clip = await getClip(id);
   if (!clip) return NextResponse.json({ error: 'Clip not found' }, { status: 404 });
   try {
-    await del(clip.blob_url);
+    await deleteStorageFile(clip.blob_url);
   } catch {
-    // blob may already be gone
+    // file may already be gone
   }
   await deleteClipRecord(id);
   await logActivity(await getUser(req), 'delete_clip', `Deleted "${clip.title}"`);

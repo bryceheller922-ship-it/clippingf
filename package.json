@@ -9,8 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@upstash/redis": "^1.38.2",
-    "@vercel/blob": "^1.1.1",
+    "@supabase/supabase-js": "^2.112.3",
+    "firebase": "^12.17.1",
+    "jose": "^6.2.9",
     "next": "^15.4.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

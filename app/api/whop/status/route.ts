@@ -1,11 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSettings } from '@/lib/settings';
+import { getUid } from '@/lib/session';
 import { getCompany, listPayments } from '@/lib/whop';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const settings = await getSettings();
+export async function GET(req: NextRequest) {
+  const settings = await getSettings(await getUid(req));
   if (!settings.whop_api_key) {
     return NextResponse.json({ connected: false, reason: 'No Whop API key saved in Settings' });
   }

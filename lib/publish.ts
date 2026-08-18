@@ -2,6 +2,7 @@ import { findAccount } from './store';
 import { withFreshToken } from './auth';
 import { recordPost } from './clips';
 import { logActivity } from './activity';
+import { isStorageUrl } from './storage';
 import {
   fetchPublishStatus,
   initDirectPost,
@@ -31,13 +32,9 @@ export interface PublishResult {
   accountName: string;
 }
 
-export function isBlobUrl(url: string): boolean {
-  return /^https:\/\/[^/]+\.blob\.vercel-storage\.com\//.test(url);
-}
-
 /** Publishes one video to one TikTok account and records it on the clip. */
 export async function publishToAccount(p: PublishParams): Promise<PublishResult> {
-  if (!isBlobUrl(p.videoUrl)) throw new Error('videoUrl must be a Vercel Blob URL from this workspace');
+  if (!isStorageUrl(p.videoUrl)) throw new Error('videoUrl must be a clip stored in this workspace');
   const stored = await findAccount(p.openId);
   if (!stored) throw new Error('TikTok account not connected');
   const acct = await withFreshToken(stored);

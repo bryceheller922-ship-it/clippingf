@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAgent } from '@/lib/agents';
+import { getUid } from '@/lib/session';
 import { runAgent, type ChatMessage } from '@/lib/agent-runner';
 
 // Agent runs can chain several LLM + tool calls (including posting to TikTok).
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .slice(-30);
 
   try {
-    const result = await runAgent(agent, clean);
+    const result = await runAgent(agent, clean, await getUid(req));
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
