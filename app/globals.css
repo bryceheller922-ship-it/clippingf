@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #0b0b0f;
   --panel: #15151d;
   --panel-2: #1c1c26;
@@ -14,12 +15,31 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+  background: var(--bg);
+}
+
 body {
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   min-height: 100vh;
 }
+
+/* Dark scrollbars everywhere — no white bars breaking the theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: #3a3a4c; }
+::-webkit-scrollbar-corner { background: transparent; }
 
 .container { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
 
